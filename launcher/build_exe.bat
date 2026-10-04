@@ -11,6 +11,19 @@ setlocal
 set "HERE=%~dp0"
 set "BASE=%USERPROFILE%\.venvs\sdp07\Scripts\python.exe"
 set "BUILD=%LOCALAPPDATA%\pulse_control_build"
+set "EXE=%HERE%..\Pulse Control.exe"
+
+rem Already built and newer than the app's code? Nothing to do -- just use it.
+rem (build_exe.bat force rebuilds anyway.)
+if /i not "%~1"=="force" if exist "%EXE%" (
+  powershell -NoProfile -Command "if ((Get-Item -LiteralPath '%EXE%').LastWriteTime -ge (Get-Item -LiteralPath '%HERE%pulse_control.py').LastWriteTime) { exit 0 } else { exit 1 }"
+  if not errorlevel 1 (
+    echo "Pulse Control.exe" is already up to date - just double-click it.
+    echo ^(to rebuild anyway: build_exe.bat force^)
+    pause
+    exit /b 0
+  )
+)
 
 if not exist "%BASE%" (
   echo Can't find the project's Python at %BASE%
