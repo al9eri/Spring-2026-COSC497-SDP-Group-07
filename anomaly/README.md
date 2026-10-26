@@ -3,7 +3,8 @@
 the ML-method track: train on **normal** wrist-PPG, flag deviations (stress).
 built on WESAD, evaluated with sensitivity-first, subject-wise metrics.
 
-> **just want the commands?** → [`../COMMANDS.md`](../COMMANDS.md) — dashboards, eval,
+> **just want the commands?** → [`../COMMANDS-macos.md`](../COMMANDS-macos.md) or
+> [`../COMMANDS-windows.md`](../COMMANDS-windows.md) — dashboards, eval,
 > model-improvement flags, the export→compress deploy pipeline, calibration.
 
 ## what's here

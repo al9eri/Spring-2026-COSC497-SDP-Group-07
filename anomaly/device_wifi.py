@@ -4,15 +4,19 @@ the ESP32 keeps the SSID and password in NVS, so they survive a reflash and neve
 sit in source control. this just types the command down the same serial link the
 dashboard uses:
 
-    python3 -m anomaly.device_wifi --hotspot       # join THIS PC's Windows hotspot
+    python3 -m anomaly.device_wifi --hotspot       # join THIS machine's own hotspot
     python3 -m anomaly.device_wifi --ssid MyNetwork --password hunter2
     python3 -m anomaly.device_wifi --status        # what is it connected to?
     python3 -m anomaly.device_wifi --forget
 
---hotspot needs no password from you: it reads the hotspot's name and password
-from Windows (anomaly.hotspot), switches the hotspot on if it is off, and sends
-them down the cable. nothing is typed, printed or saved. once done, the board
-rejoins that hotspot by itself on every boot.
+--hotspot reads the hotspot's name from the OS (anomaly.hotspot), switches it on
+if it is off, and sends the credentials down the cable. nothing is printed or
+saved. once done, the board rejoins that hotspot by itself on every boot.
+
+on **Windows** the Mobile Hotspot hands over its password too, so there is
+nothing at all to type. on **macOS** Internet Sharing keeps it in the System
+keychain, which needs root -- so you type it once here instead. either way the
+password only ever goes down the USB cable.
 
 stop the dashboard first -- only one process can hold the port.
 """
@@ -55,7 +59,8 @@ def _drain(ser, seconds: float = 6.0, want: str = "") -> list:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--hotspot", action="store_true",
-                    help="join this PC's Windows Mobile Hotspot -- no password needed")
+                    help="join this machine's own hotspot (Windows Mobile Hotspot / "
+                         "macOS Internet Sharing)")
     ap.add_argument("--ssid")
     ap.add_argument("--password", help="omit to be prompted without echoing "
                                        "(or set PULSE_WIFI_PASS, as the control panel does)")
@@ -89,9 +94,23 @@ def main() -> int:
         except hotspot.HotspotError as e:
             raise SystemExit("  %s" % e)
         print("  " + hotspot.describe(cfg))
-        args.ssid, pw = cfg["ssid"], cfg["passphrase"]
+        args.ssid = cfg["ssid"]
+        if not args.ssid:
+            raise SystemExit("  the hotspot has no network name yet -- set it up first "
+                             "(python -m anomaly.hotspot)")
+        # an explicit --password or PULSE_WIFI_PASS wins; then whatever the OS
+        # will hand over; then ask. macOS is the one that asks: Internet
+        # Sharing's password sits in the System keychain, behind root.
+        if pw is None:
+            pw = cfg.get("passphrase")
+        if pw is None:
+            print("  this OS will not hand a script the shared network's password")
+            print("  (macOS keeps it in the System keychain). type it once -- it is not")
+            print("  echoed, printed or saved; it goes straight down the cable.")
+            pw = getpass.getpass("  password for %r: " % args.ssid)
         if not pw:
-            raise SystemExit("  the hotspot has no password set -- the board needs one (WPA2)")
+            raise SystemExit("  the board needs a WPA2 password -- set one on the hotspot, "
+                             "then run this again")
 
     ser, port = _open(args.port, args.baud)
     print(f"\n  board on {port}")

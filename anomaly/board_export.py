@@ -27,7 +27,7 @@ three layers:
        zero-phase filtering, scipy's find_peaks semantics, a kiss-style
        mixed-radix FFT, the movement gate) is compared against scipy/numpy and
        anomaly.quality on real WESAD windows. this proves the ALGORITHM.
-    2. the header compiles with the ESP32 cross-compiler (see COMMANDS.md).
+    2. the header compiles with the ESP32 cross-compiler (see the COMMANDS file).
     3. the board runs the baked self-test vectors through the C++ at boot and
        reports pass/fail on serial and /health. this proves the TRANSLATION.
 

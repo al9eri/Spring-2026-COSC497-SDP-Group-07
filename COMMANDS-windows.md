@@ -1,22 +1,43 @@
-# command cheat sheet
+# command cheat sheet — Windows
 
-every command you need, copy-paste ready, from the **repo root**.
+every command you need, copy-paste ready, from the **repo root**, in
+**PowerShell**. on a Mac? use [`COMMANDS-macos.md`](COMMANDS-macos.md) instead —
+same tasks, same outcomes, different shell.
 
-**start every terminal with this**, then every command below works exactly as
-written:
+## there is no venv to get into
 
-```bash
-source ~/.venvs/sdp07/bin/activate      # macOS / Linux
-```
+every command in this file is written as `python -m anomaly.fleet`. **put
+`.\run.ps1` in front of it and drop the `python -m`, and it just works** — from
+any terminal, any tab, with or without conda, no activation and no execution
+policy to argue with:
 
 ```powershell
-& $HOME\.venvs\sdp07\Scripts\Activate.ps1    # Windows PowerShell
+.\run.ps1 anomaly.fleet            # == python -m anomaly.fleet
+.\run.ps1 anomaly.serve --source device
+.\run.ps1 sketch_aug3a\make_web_assets.py
+.\run.ps1                          # the list of what you can run
+.\run.ps1 doctor                   # what is installed, and where
 ```
 
-your prompt gains a `(sdp07)` and `python` becomes the venv's. without it you
-are running the system python, which has none of the dependencies installed —
-that is what `ModuleNotFoundError: No module named 'scipy'` (or `tensorflow`,
-or `fastapi`) means, every time. first-time setup is section 1.
+`.\run.ps1` finds the project's interpreter and runs it directly. nothing to
+activate, nothing to remember, nothing to get wrong. (the macOS twin is `./run`
+— same words, same outcomes.)
+
+**if you prefer the venv, activating still works:**
+
+```powershell
+& $HOME\.venvs\sdp07\Scripts\Activate.ps1
+```
+
+your prompt gains a `(sdp07)` and `python` becomes the venv's, and the commands
+below then work exactly as written. note the `&`: PowerShell parses a line
+starting with `$HOME\...` as an expression, not a command, so it needs the call
+operator. and note that activation is **per terminal tab** — a new tab is back
+to the system python, which is the usual reason this "stops working".
+
+without either, you are running the system python, which has none of the
+dependencies — that is what `ModuleNotFoundError: No module named 'scipy'` (or
+`tensorflow`, or `fastapi`) means, every time. first-time setup is section 1.
 
 ---
 
@@ -29,7 +50,7 @@ or `fastapi`) means, every time. first-time setup is section 1.
 | `anomaly.serve` | current | single-stream dashboard at :8001 — WESAD replay, or one board over USB |
 | `anomaly.db` | current | inspect the store, take a backup |
 | `anomaly.device_wifi` | current | put a board on WiFi over USB, read back its IP. `--hotspot` = this PC's hotspot, no password |
-| `anomaly.hotspot` | current | the Windows hotspot: state, or `--on` |
+| `anomaly.hotspot` | current | the Windows Mobile Hotspot: state, or `--on` |
 | `anomaly.device_check` | current | live grip coach — is the finger on properly? |
 | `anomaly.device_source` | current | sensor self-test, no model and no dashboard in the way |
 | `anomaly.device_calibrate` | current, USB only | re-derive thresholds on your own calm, for `serve --source device` |
@@ -55,13 +76,20 @@ stress session, the WESAD demo, reports, firmware build steps — and a log of
 what each one is doing. double-click `launcher\build_exe.bat` once to build
 `Pulse Control.exe` into the project folder (needs the venv from section 1),
 then double-click the exe. it runs the real code with your venv, so a `git pull`
-never needs a rebuild; rebuild only if `launcher/pulse_control.py` changes. the
-exe is gitignored — everyone builds their own. no Windows? `python
-launcher/pulse_control.py`.
+never needs a rebuild; rebuild only if `launcher/pulse_control.py` changes
+(`build_exe.bat force` rebuilds regardless). the exe is gitignored — everyone
+builds their own. don't want an exe at all? `python launcher/pulse_control.py`.
+
+**no virtualenv yet?** the window still opens, and **Advanced → Set up the
+virtualenv…** does section 1 for you (it needs Python 3.12 installed), piping
+pip's output into the log.
+
+(on macOS the equivalent icon, `Pulse Control.app`, is committed and needs no
+build step at all — see [`COMMANDS-macos.md`](COMMANDS-macos.md).)
 
 **if you remember nothing else:**
 
-```bash
+```powershell
 python -m anomaly.fleet
 ```
 
@@ -69,25 +97,21 @@ python -m anomaly.fleet
 
 ## 1. setup (once per machine)
 
-```bash
+```powershell
 git clone <repo-url>
 cd Spring-2026-COSC497-SDP-Group-07
+.\run.ps1 setup
 ```
+
+`.\run.ps1 setup` is the whole of this section: it finds Python 3.12, builds
+`$HOME\.venvs\sdp07`, and installs both requirements files. `winget install
+--id Python.Python.3.12 -e` first if it says 3.12 is missing. the rest of this
+section is what it does, and why, for when you would rather do it by hand.
 
 **make a virtualenv, and use python 3.12 specifically.**
 `baselines/requirements.txt` pins `tensorflow-cpu<2.20`, and no TF below 2.20
 ships wheels for 3.13 or 3.14 — on a newer interpreter pip simply fails to
 resolve tensorflow.
-
-macOS / Linux:
-
-```bash
-python3.12 -m venv ~/.venvs/sdp07
-~/.venvs/sdp07/bin/python -m pip install --upgrade pip
-~/.venvs/sdp07/bin/python -m pip install -r baselines/requirements.txt -r pipeline/requirements.txt
-```
-
-Windows (PowerShell):
 
 ```powershell
 py -3.12 -m venv $HOME\.venvs\sdp07
@@ -96,16 +120,18 @@ $PY = "$HOME\.venvs\sdp07\Scripts\python.exe"
 & $PY -m pip install -r baselines\requirements.txt -r pipeline\requirements.txt
 ```
 
-note the `&` in the PowerShell lines: PowerShell parses a line starting with
-`$HOME\...` as an expression, not a command, so it needs the call operator.
+no `py -3.12`? install Python 3.12 from [python.org](https://www.python.org/downloads/),
+and **tick "tcl/tk and IDLE"** in the installer — Pulse Control needs it. (the
+python.org installer includes it by default; it is only missing if someone
+un-ticked it.)
 
 - **activate once per terminal** (the block at the top of this file), then use
   `python`, not `python3`. `deactivate` when done, or just close the tab.
 - **or skip activation and spell out the interpreter** —
-  `~/.venvs/sdp07/bin/python -m anomaly.fleet`. more typing, but immune to shell
-  aliases and to a stale `python3`. either is fine. what never works is a bare
-  `python3`: that is the system interpreter, and none of the dependencies are
-  installed there.
+  `& $HOME\.venvs\sdp07\Scripts\python.exe -m anomaly.fleet`. more typing, but
+  immune to a stale `python3` on `PATH`. either is fine. what never works is a
+  bare `python3`: that is the system interpreter (or the Microsoft Store stub),
+  and none of the dependencies are installed there.
 
   other Windows shells, if you are not in PowerShell:
 
@@ -123,32 +149,25 @@ note the `&` in the PowerShell lines: PowerShell parses a line starting with
   ```
 
   to confirm activation took, ask which interpreter you actually have — it
-  should be the one under `.venvs/sdp07`:
-
-  ```bash
-  which python                                         # macOS / Linux
-  ```
+  should be the one under `.venvs\sdp07`:
 
   ```powershell
-  Get-Command python | Select-Object -ExpandProperty Source    # Windows
+  Get-Command python | Select-Object -ExpandProperty Source
+  python -c "import sys; print(sys.executable)"
   ```
 
   one caveat: if your prompt already says `(base)`, conda is active too. both
   conda and a venv prepend to `PATH`, so a later `conda deactivate` can leave
   you pointing at the wrong interpreter with no warning. check with
-  `which python` (`Get-Command python` on Windows) if a command starts failing
-  for no reason.
-- **keep the venv outside the repo and outside any synced folder** (iCloud,
-  OneDrive, Dropbox). a 1.7 GB venv under an iCloud-synced `~/Documents` made
-  `import numpy` take **174 s** instead of 0.2 s. `.gitignore` does not stop a
-  sync client.
+  `Get-Command python` if a command starts failing for no reason.
+- **keep the venv outside the repo and outside any synced folder** (OneDrive,
+  Dropbox). a 1.7 GB venv under a synced `Documents` made `import numpy` take
+  **174 s** instead of 0.2 s. `.gitignore` does not stop a sync client, and
+  OneDrive syncs `Documents` by default on a new Windows install.
 - **venvs are not relocatable** — console scripts hardcode the interpreter path.
   recreate rather than move.
 - only `anomaly.device_check` / `anomaly.device_source` run without TensorFlow
   (numpy + scipy + pyserial); everything else needs the full install.
-- **macOS Intel:** `tensorflow-cpu` stops at 2.16.2, which forces `numpy<2` and
-  `setuptools<81`. both constraints are already in the requirements file. Apple
-  Silicon is unaffected.
 
 datasets are not in git and are only needed for build steps:
 WESAD (~17 GB) unzips into `WESAD/`; the UBC PPG set (~3.8 GB, old baseline
@@ -160,7 +179,7 @@ only) into `Code & Data/` — [Borealis Data](https://borealisdata.ca/dataset.xh
 
 ### 2.1 the master
 
-```bash
+```powershell
 python -m anomaly.fleet --hotspot        # boards on this PC's hotspot (recommended)
 python -m anomaly.fleet                  # roster -> http://localhost:8002
 python -m anomaly.fleet --subnet 192.168.1   # only if a board is on another network
@@ -171,7 +190,7 @@ python -m anomaly.fleet --subnet 192.168.1   # only if a board is on another net
 
 scans every local subnet for boards, scores each one, pushes each verdict back.
 no IP to look up. assign a subject to each board from the roster, then
-calibrate — the baseline is stored against the **subject** in `data/pulse.db`,
+calibrate — the baseline is stored against the **subject** in `data\pulse.db`,
 not the board, so it follows the person from one board to another. a board with
 nobody on it, or somebody with no baseline, gets no flag rather than someone
 else's. sessions open and close on their own as contact comes and goes.
@@ -184,7 +203,7 @@ done from the roster, not the command line:
 - **review a flag** — real / artifact / ? on each history row. these are stored
   for evaluation; nothing consumes them for flagging
 - **clear a board's flag history** — `clear` in the History header. the saved
-  waveforms under `data/flags/` stay on disk
+  waveforms under `data\flags\` stay on disk
 - **tuning** — live sliders for the detection constants, persisted across
   restarts
 
@@ -196,7 +215,7 @@ subnet), `--port`, `--rescan <seconds>`, `--db <path>`.
 **put it on WiFi.** easiest: join this PC's own Windows hotspot. the PC sits next
 to the board, so range stops being a problem. plug the board in by USB once and:
 
-```bash
+```powershell
 python -m anomaly.device_wifi --hotspot
 ```
 
@@ -204,7 +223,7 @@ no password to type: it reads the hotspot's name and password from Windows,
 switches the hotspot on if needed, sends them down the cable, and prints the
 board's IP. nothing is printed or saved. from then on the board rejoins the
 hotspot on every boot by itself. `python -m anomaly.hotspot` shows its state
-(never the password).
+(never the password), and `--on` switches it on.
 
 two Windows habits to know:
 
@@ -216,12 +235,16 @@ two Windows habits to know:
   internet in the room = no hotspot; keep a phone hotspot as the fallback and
   point the board at it with `--ssid`
 
+**2.4 GHz only** — the ESP32 cannot join a 5 GHz-only SSID. if
+`anomaly.hotspot` warns that the band is 5 GHz: Settings → Network & internet →
+Mobile hotspot → Properties → Edit → Network band → 2.4 GHz.
+
 **a board remembers up to 5 networks**, most recently used first, and tries
 them in turn (15 s each) until one answers — so one board moves between this
 PC's hotspot, a phone's hotspot and a router by itself. add one over WiFi from
 Pulse Control (Board setup → Add a WiFi network), or over USB:
 
-```bash
+```powershell
 python -m anomaly.device_wifi --ssid "Saif iPhone" --save   # remember it for later
 python -m anomaly.device_wifi --ssid "Saif iPhone"          # join it now
 python -m anomaly.device_wifi --forget --ssid "Old Network" # forget one
@@ -243,36 +266,32 @@ laptop is on and finds the board's new address by itself.
 the other two ways; anything stored on the board wins over the header, since
 NVS survives a reflash. (secrets.h is the last entry in the list, never stored.)
 
-hard-coded: copy `sketch_aug3a/secrets.example.h` to
-`sketch_aug3a/secrets.h` (gitignored) and fill in `WIFI_SSID` / `WIFI_PASS`.
-if the board already has credentials stored, clear them once and power-cycle:
+hard-coded: copy `sketch_aug3a\\secrets.example.h` to
+`sketch_aug3a\\secrets.h` (gitignored) and fill in `WIFI_SSID` / `WIFI_PASS`.
+the sketch does `#include "secrets.h"`, so it will **not compile until that copy
+exists** — it is the first thing to do on a fresh clone. leave both values empty
+(`""`) if you only ever set WiFi over USB. if the board already has credentials
+stored, clear them once and power-cycle:
 
-```bash
+```powershell
 python -m anomaly.device_wifi --forget
 ```
 
-over USB, no reflash — useful when switching networks:
-
-```bash
-python -m anomaly.device_wifi --ssid MyNetwork      # prompts for the password
-python -m anomaly.device_wifi --status              # what is it on? what IP?
-```
-
-**2.4 GHz only** — the ESP32 cannot join a 5 GHz-only SSID. the IP appears on
-the TFT header and on serial as `# wifi connected ssid=... ip=...`.
+the IP appears on the TFT header and on serial as
+`# wifi connected ssid=... ip=...`.
 
 **rebuild the web assets. this is not optional.** the dashboards are gzipped
-into a C header and compiled into the firmware. `sketch_aug3a/web_assets.h` is
+into a C header and compiled into the firmware. `sketch_aug3a\web_assets.h` is
 gitignored, so a fresh clone does not have it and the sketch will not compile
-until you generate it — and after any edit under `pulse/` or `anomaly/static/`
+until you generate it — and after any edit under `pulse\` or `anomaly\static\`
 the board keeps serving the old copy until you re-run this and reflash:
 
-```bash
-python3 sketch_aug3a/make_web_assets.py     # -> sketch_aug3a/web_assets.h
+```powershell
+python sketch_aug3a\make_web_assets.py      # -> sketch_aug3a\web_assets.h
 ```
 
 stdlib only (`gzip`, `os`, `sys`), so this one really does run on a bare
-`python3` — it is the only command here that does.
+`python` outside the venv — it is the only command here that does.
 
 **flash it.** needs two Arduino libraries, both by **ESP32Async** (older forks
 do not build against ESP32 core 3.x): **ESP Async WebServer** and **Async TCP**.
@@ -304,7 +323,7 @@ Pulse Watch has three data sources, picked in Settings:
   **offline**; it does not quietly fall back to a demo (it used to, and that was
   indistinguishable from working)
 - **Simulated** — a scripted scenario, no model involved. edit the `SIM` table
-  at the top of `pulse/Pulse Watch.dc.html`: `label` is ground truth, `level` is
+  at the top of `pulse\Pulse Watch.dc.html`: `label` is ground truth, `level` is
   what the detector reports, and they are deliberately out of step so the
   10–40 s detection lag is visible. seeded, so it plays identically every time
 - **WESAD S5** — a recorded clip of real physiology scored by the deployed
@@ -321,12 +340,17 @@ doing its job.
 separate from the fleet: one stream, one page, with a scorecard against ground
 truth. run `serve` **or** `fleet`, not both.
 
-```bash
+```powershell
 python -m anomaly.serve                      # WESAD replay (default) -> :8001
 python -m anomaly.serve --subject S17        # other clean subjects: S17, S7
 python -m anomaly.serve --source device      # a board over USB, auto-detect port
-python -m anomaly.serve --source device --device-port /dev/cu.usbmodem101
+python -m anomaly.serve --source device --device-port COM5
 ```
+
+Windows names the board's port `COM3`, `COM5`, … — find yours in Device Manager
+under Ports (COM & LPT), or with
+`python -m anomaly.device_source --list-ports`. the port auto-detects, so you
+usually do not need `--device-port` at all.
 
 - `/` (alias `/watch`) — Pulse Watch, the product UI
 - `/dev` — developer dashboard: the model's flag against the WESAD label live
@@ -342,25 +366,25 @@ which thresholds are in force.
 
 **calibrate the USB rig on your own calm:**
 
-```bash
+```powershell
 python -m anomaly.device_check                # get a steady GOOD TO RECORD first
 python -m anomaly.device_calibrate            # 5 min of calm, sit still
 python -m anomaly.serve --source device       # now flags against your baseline
 ```
 
-writes `anomaly/saved/scorer_device.npz` and leaves `scorer.npz` alone, so the
+writes `anomaly\saved\scorer_device.npz` and leaves `scorer.npz` alone, so the
 WESAD demo is unaffected. `serve --source device` picks it up automatically;
 force either with `--scorer wesad` / `--scorer device` — that before/after *is*
 the domain-transfer delta, live. windows are gated on the same grip checks
 `device_check` prints, so a fidget never teaches the model "normal".
 `--simulate --minutes 2 --min-windows 5` runs the whole path on a synthetic
 pulse with no board attached and writes nothing. `--dry-run` reports without
-writing. raw calm windows land in `anomaly/saved/device_calm.npz` (gitignored —
+writing. raw calm windows land in `anomaly\saved\device_calm.npz` (gitignored —
 personal biometric data).
 
 **check the hardware before blaming the model:**
 
-```bash
+```powershell
 python -m anomaly.device_source --list-ports
 python -m anomaly.device_source            # live self-test, no TensorFlow
 ```
@@ -373,7 +397,7 @@ the experiment the whole method rests on: does the flag respond to stress, not
 just to a knocked sensor? runs on the fleet, so start the master first and
 assign the subject on the roster.
 
-```bash
+```powershell
 python -m anomaly.fleet                                   # terminal 1
 python -m anomaly.protocol run                            # terminal 2: live console
 python -m anomaly.protocol run --device pulse-a4f2c1 --task "1022 - 13"
@@ -393,7 +417,7 @@ controls (**Protocol**, then **Next phase now** / **Stop**).
 
 score it:
 
-```bash
+```powershell
 python -m anomaly.protocol list
 python -m anomaly.protocol report                         # every session, pooled
 python -m anomaly.protocol report --session 12 --plot     # one, with a figure
@@ -407,8 +431,8 @@ to first live flag. only windows lying entirely inside a phase count. verdicts:
 `RESPONDS`, `HR ONLY` (the domain-transfer finding — report it),
 `NO INDUCTION`, `UNSCOREABLE`.
 
-files land in `data/protocols/session_<id>.npz` (+ `.png`), gitignored with
-the rest of `data/`.
+files land in `data\protocols\session_<id>.npz` (+ `.png`), gitignored with
+the rest of `data\`.
 
 ### 2.6 the on-device detector
 
@@ -436,9 +460,9 @@ Python reference. serial prints `# on-device detector self-test pass …`, and
 | `dhold` | windows refused for movement |
 | `ddrop` | seconds the gate skipped in the last scored window. climbing 1/s = every new second rejected, window back-filled from older ones — why `dsc` can sit frozen |
 
-refit or change it — both files in `sketch_aug3a/` come from here:
+refit or change it — both files in `sketch_aug3a\` come from here:
 
-```bash
+```powershell
 python -m anomaly.board_export --check 300   # prove the C algorithm vs scipy/quality
 python -m anomaly.board_export               # refit on WESAD calm -> board_model.h
 ```
@@ -450,11 +474,11 @@ other, re-run `--check`, reflash, and read `self=`.
 
 ## 3. the store
 
-one SQLite file, `data/pulse.db`, holding subjects, baselines (including the
+one SQLite file, `data\pulse.db`, holding subjects, baselines (including the
 `k_sigma` that survives a re-wear), sessions, readings, flags and the tuning
 values. gitignored — it is personal biometric data.
 
-```bash
+```powershell
 python -m anomaly.db                         # row counts + every subject's baseline
 python -m anomaly.db --backup pulse.bak.db   # consistent snapshot, safe while running
 ```
@@ -462,10 +486,11 @@ python -m anomaly.db --backup pulse.bak.db   # consistent snapshot, safe while r
 **use `--backup` to move subjects between machines.** copying `pulse.db` on its
 own is not a backup: in WAL mode the newest commits sit in `pulse.db-wal` until
 a checkpoint, so a plain copy silently comes back missing the most recent work.
-on the destination, stop the master, drop the file in as `data/pulse.db`, and
-delete any stale `pulse.db-wal` / `pulse.db-shm` beside it.
+on the destination, stop the master, drop the file in as `data\pulse.db`, and
+delete any stale `pulse.db-wal` / `pulse.db-shm` beside it. the file is
+portable between Windows and macOS — same schema, same SQLite.
 
-`data/flags/event_*.npz` are the 60 s waveforms behind each flag. `window_path`
+`data\flags\event_*.npz` are the 60 s waveforms behind each flag. `window_path`
 in the store is an absolute path, so those links do not survive a move —
 copy the folder if you want the waveforms, but expect the roster not to find
 them.
@@ -476,7 +501,7 @@ them.
 
 ### evaluate (needs WESAD)
 
-```bash
+```powershell
 python -m anomaly.run --model baseline   # statistical floor (~0.64 PR-AUC)
 python -m anomaly.run --model ae         # autoencoder, O1 (~0.67)
 python -m anomaly.run --model ssl        # self-supervised, O2 (~0.68)
@@ -484,12 +509,12 @@ python -m anomaly.wesad                  # window counts per condition
 ```
 
 leave-one-subject-out, subject-wise splits. numbers also in
-`anomaly/RESULTS.md`. the first run reads ~13 GB of pickles once, then caches to
-`WESAD/_harness_cache/`.
+`anomaly\RESULTS.md`. the first run reads ~13 GB of pickles once, then caches to
+`WESAD\_harness_cache\`.
 
 model-improvement levers, `--model ae` only:
 
-```bash
+```powershell
 python -m anomaly.run --model ae --bottleneck 256              # real latent
 python -m anomaly.run --model ae --bottleneck 256 --ch-cap 32  # ESP32-sized  <- DEPLOYED
 python -m anomaly.run --model ae --bottleneck 256 --ch-cap 32 --denoise 0.15
@@ -499,7 +524,7 @@ deployed config = LOSO **PR-AUC 0.706 / recall@90spec 0.545**.
 
 ### ship a new model
 
-```bash
+```powershell
 python -m anomaly.export --bottleneck 256 --ch-cap 32   # train + save ae.keras
 python -m anomaly.compress                              # -> ae_int8.tflite + int8 scorer
 ```
@@ -513,11 +538,11 @@ score scale, which the dashboards need to flag correctly. commit only
 ### rebake the WESAD demo clip
 
 only needed if the model or the clip changes — the baked clip travels inside
-`pulse/Pulse Watch.dc.html`, which is tracked, so a fresh clone does not need
+`pulse\Pulse Watch.dc.html`, which is tracked, so a fresh clone does not need
 WESAD to run the demo.
 
-```bash
-python -m anomaly.make_demo_clip              # -> pulse/Pulse Watch.dc.html
+```powershell
+python -m anomaly.make_demo_clip              # -> pulse\Pulse Watch.dc.html
 python -m anomaly.make_demo_clip --dry-run    # report the size, write nothing
 ```
 
@@ -525,7 +550,7 @@ then re-run `make_web_assets.py` and reflash.
 
 ### the rest
 
-```bash
+```powershell
 python -m anomaly.calibrate      # per-user calibration on WESAD (O6 method)
 python -m anomaly.make_plots     # result figures
 ```
@@ -551,13 +576,34 @@ minutes; far too slow for falls.
 ## 6. troubleshooting
 
 **`ModuleNotFoundError` for scipy / tensorflow / fastapi, right after a clean install**
-you ran a bare `python3`, which is the system interpreter, not the venv — the
-install went to the venv and the run did not. activate (top of this file), or
-use `~/.venvs/sdp07/bin/python`. check which one you have with `which python`
-(`Get-Command python` on Windows); it should sit under `.venvs/sdp07`.
+nothing is missing and nothing needs reinstalling — you ran a `python` that is
+not the venv's, so the install went to one interpreter and the run went to
+another. the fix is to stop choosing:
+
+```powershell
+.\run.ps1 anomaly.fleet
+.\run.ps1 doctor         # proves which interpreter it uses, and what is in it
+```
+
+the usual cause is a new terminal tab, where the activation from the old one
+does not apply.
+
+**"running scripts is disabled on this system"**
+the execution policy is blocking `Activate.ps1`. §1 —
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` for that tab only.
+
+**`ModuleNotFoundError: No module named '_tkinter'`, only for Pulse Control**
+this Python was installed without tcl/tk. re-run the python.org installer and
+tick "tcl/tk and IDLE". nothing else in the project needs it.
+
+**`python -m anomaly.hotspot` says Windows will not start a hotspot**
+the Mobile Hotspot only runs while the PC has a connection to share. plug in
+Ethernet, or join a WiFi network with internet, then retry. no internet in the
+room = no hotspot; use a phone hotspot and point both the board and the laptop
+at it instead (§2.2).
 
 **the sketch will not compile: `web_assets.h` not found**
-it is gitignored. run `python3 sketch_aug3a/make_web_assets.py`.
+it is gitignored. run `python sketch_aug3a\make_web_assets.py`.
 
 **dashboard edits do not show on the board**
 same command, then reflash. the board serves a compiled-in copy.
@@ -567,10 +613,18 @@ it serves the page from disk but its routes were fixed at startup. restart it.
 the page and the master exchange an API version so this says so plainly instead
 of failing with a bare "failed".
 
+**no serial port / "access is denied"**
+only one process can hold the port. stop `serve` / `device_check` and close the
+Arduino Serial Monitor. list what Windows sees:
+
+```powershell
+python -m anomaly.device_source --list-ports
+Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Description
+```
+
 **upload fails at the post-flash reset**
 `Serial data stream stopped: Possible serial noise or corruption` — one process
-owns the serial port. stop `serve` / `device_check` and close the Arduino Serial
-Monitor before uploading. the flash itself usually succeeded, so check with
+owns the serial port, as above. the flash itself usually succeeded, so check with
 `device_check` before re-flashing. if the TFT comes back white, power-cycle the
 USB; a RESET press does not re-power the display.
 
@@ -586,19 +640,25 @@ false. below about −80 dBm, move the board closer.
 
 **"Address already in use"**
 
-```bash
-lsof -i :8002          # find what is holding the port
+```powershell
+Get-NetTCPConnection -LocalPort 8002 | Select-Object OwningProcess
+Stop-Process -Id <pid>
 ```
 
 **the phone cannot reach a dashboard**
 same WiFi, and use the host's LAN IP, not `localhost`. the servers bind
-`0.0.0.0` already; if it still fails the host firewall is blocking the port.
+`0.0.0.0` already; if it still fails Windows Defender Firewall is blocking the
+port — allow python through it for private networks.
+
+```powershell
+ipconfig | Select-String IPv4      # this PC's LAN address
+```
 
 ---
 
 ## 7. git
 
-```bash
+```powershell
 git status --short          # local-only files are already excluded
 git add .
 git commit -m "your message here"
@@ -608,7 +668,7 @@ git pull
 
 undo the last commit, before pushing:
 
-```bash
+```powershell
 git reset --soft HEAD~1     # keep the changes
 git reset --hard HEAD~1     # discard them too (destructive)
 ```
@@ -621,20 +681,20 @@ these predate the pivot to one-class anomaly detection. they are a clean-signal
 reference point and the streaming pattern the current dashboards were built
 from. **do not point a demo at them.**
 
-```bash
-python pipeline/server.py               # old cardiac dashboard -> :8000
-python pipeline/run_cli.py --once       # terminal-only, one 92 s pass
-python baselines/train.py --preset phase_a     # supervised 3-class, ~12 min CPU
-python baselines/quantize.py --preset phase_a  # -> model_int8.tflite
-python baselines/inference_demo.py             # "Overall: 28/30 correct (93%)"
-python baselines/make_plots.py
+```powershell
+python pipeline\server.py               # old cardiac dashboard -> :8000
+python pipeline\run_cli.py --once       # terminal-only, one 92 s pass
+python baselines\train.py --preset phase_a     # supervised 3-class, ~12 min CPU
+python baselines\quantize.py --preset phase_a  # -> model_int8.tflite
+python baselines\inference_demo.py             # "Overall: 28/30 correct (93%)"
+python baselines\make_plots.py
 ```
 
 `anomaly.master` sits in the same category for a different reason: it scores one
 networked board headlessly and pushes the verdict back, which is what `fleet`
 does with discovery, a roster and a store on top.
 
-```bash
+```powershell
 python -m anomaly.master --host 10.49.10.173
 ```
 
@@ -644,16 +704,21 @@ python -m anomaly.master --host 10.49.10.173
 
 | path | purpose |
 |---|---|
-| `anomaly/` | **the one-class anomaly detector — current direction** |
-| `anomaly/fleet.py` + `static/fleet.html` | the master: discovery, scoring, roster, store |
-| `anomaly/db.py` | the SQLite store behind the roster |
-| `anomaly/serve.py` + `static/` | single-stream dashboards (`/` watch, `/dev`) |
-| `anomaly/saved/ae_int8.tflite` | the deployed model — dashboards and ESP32 both run this |
-| `anomaly/RESULTS.md` | PR-AUC, recall@90% spec, per-subject variance |
-| `pulse/Pulse Watch.dc.html` | the product UI, and the baked demo sources |
-| `sketch_aug3a/` | ESP32-S3 firmware + the web-asset baker |
-| `data/pulse.db` | subjects, baselines, sessions, flags (gitignored) |
-| `WESAD/` | WESAD dataset (~17 GB, not in git) |
-| `pipeline/` | prior work — streaming pattern, `vitals.py`, sensor setup guide |
-| `baselines/` | prior work — the supervised cardiac model |
-| `Code & Data/` | UBC PPG dataset (~3.8 GB, not in git) |
+| `anomaly\` | **the one-class anomaly detector — current direction** |
+| `anomaly\fleet.py` + `static\fleet.html` | the master: discovery, scoring, roster, store |
+| `anomaly\db.py` | the SQLite store behind the roster |
+| `anomaly\hotspot.py` | this machine's hotspot — Mobile Hotspot here, Internet Sharing on macOS |
+| `anomaly\serve.py` + `static\` | single-stream dashboards (`/` watch, `/dev`) |
+| `anomaly\saved\ae_int8.tflite` | the deployed model — dashboards and ESP32 both run this |
+| `anomaly\RESULTS.md` | PR-AUC, recall@90% spec, per-subject variance |
+| `run.ps1` · `run` | run anything without activating a venv (`.\run.ps1 doctor`) |
+| `launcher\pulse_control.py` | Pulse Control — one window, both platforms |
+| `launcher\build_exe.bat` | builds `Pulse Control.exe` (Windows) |
+| `launcher\make_app.sh` · `build_app.sh` | the macOS bundles (committed wrapper / frozen standalone) |
+| `pulse\Pulse Watch.dc.html` | the product UI, and the baked demo sources |
+| `sketch_aug3a\` | ESP32-S3 firmware + the web-asset baker |
+| `data\pulse.db` | subjects, baselines, sessions, flags (gitignored) |
+| `WESAD\` | WESAD dataset (~17 GB, not in git) |
+| `pipeline\` | prior work — streaming pattern, `vitals.py`, sensor setup guide |
+| `baselines\` | prior work — the supervised cardiac model |
+| `Code & Data\` | UBC PPG dataset (~3.8 GB, not in git) |

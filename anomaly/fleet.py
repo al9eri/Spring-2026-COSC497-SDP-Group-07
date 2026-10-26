@@ -960,16 +960,25 @@ class Fleet:
                 await asyncio.sleep(3.0)
 
     async def hotspot_loop(self, every: float = 30.0):
-        """keep the Windows hotspot up. Windows switches it off after a few idle
-        minutes by default, and a board that rebooted meanwhile has nothing to
-        rejoin -- it just sits there failing to connect, which looks like a
-        dead board rather than a closed network."""
+        """keep this machine's hotspot up. Windows switches its Mobile Hotspot
+        off after a few idle minutes by default, and macOS drops Internet
+        Sharing whenever the connection it shares goes away. either way a board
+        that rebooted meanwhile has nothing to rejoin -- it just sits there
+        failing to connect, which looks like a dead board rather than a closed
+        network. (on macOS switching it back on needs root, so this reports and
+        carries on rather than fixing it silently.)"""
         from . import hotspot
         loop = asyncio.get_running_loop()
         while True:
             await asyncio.sleep(every)
             try:
                 cfg = await loop.run_in_executor(NET, hotspot.config)
+                if cfg.get("configured") is False:
+                    # macOS, never set up in the Sharing pane. there is no
+                    # hotspot to keep up, and repeating the same paragraph every
+                    # 30 s would bury everything else in the log.
+                    print("  hotspot: not set up -- not watching it", flush=True)
+                    return
                 if cfg.get("state") != "On":
                     print("  hotspot went off -- switching it back on", flush=True)
                     await loop.run_in_executor(NET, hotspot.ensure_on)
@@ -1263,9 +1272,12 @@ async def amain(args) -> int:
             print(f"  hotspot: {e} -- carrying on without it", flush=True)
     subnets = [args.subnet] if args.subnet else local_subnets()
     if args.hotspot:
-        from .hotspot import SUBNET
-        if SUBNET not in subnets:     # the adapter can take a moment to get its IP
-            subnets.append(SUBNET)
+        from . import hotspot
+        # read live: Windows' ICS is always 192.168.137, but macOS Internet
+        # Sharing picks bridge100's address and we only know it once it is up
+        net = hotspot.subnet()
+        if net and net not in subnets:   # the adapter can take a moment to get its IP
+            subnets.append(net)
     if not subnets:
         print("  could not work out this machine's subnet; pass --subnet 192.168.1")
         return 1
@@ -1334,7 +1346,8 @@ def main() -> int:
                     help="seconds between rescans (default 30)")
     ap.add_argument("--db", default=DB_PATH, help=f"the store (default {DB_PATH})")
     ap.add_argument("--hotspot", action="store_true",
-                    help="switch this PC's Windows hotspot on, scan it, and keep it on")
+                    help="switch this machine's hotspot on (Windows Mobile Hotspot / "
+                         "macOS Internet Sharing), scan it, and keep it on")
     args = ap.parse_args()
     try:
         return asyncio.run(amain(args))

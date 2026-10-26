@@ -1,0 +1,128 @@
+#!/bin/bash
+# Run anything in this project without activating anything.
+#
+#     ./run                      what you can run
+#     ./run setup                create ~/.venvs/sdp07 and install everything
+#     ./run anomaly.fleet        same as: python -m anomaly.fleet
+#     ./run anomaly.serve --source device
+#     ./run sketch_aug3a/make_web_assets.py
+#
+# There is no venv to "get into". This finds the project's interpreter and runs
+# it directly, so it works from any shell, any tab, with or without conda, and
+# whatever your dotfiles do to `python`. That last one matters: a `python`
+# alias or function in ~/.zshrc is resolved before PATH, so an activated venv
+# can still hand you the wrong interpreter with no warning at all.
+
+set -eu
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV="$HOME/.venvs/sdp07"
+PY="$VENV/bin/python"
+
+say() { printf '%s\n' "$@"; }
+
+find_py312() {
+  for c in python3.12 /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
+           /Library/Frameworks/Python.framework/Versions/3.12/bin/python3; do
+    p="$(command -v "$c" 2>/dev/null || true)"
+    [ -n "$p" ] && [ -x "$p" ] || continue
+    "$p" -c 'import sys; raise SystemExit(sys.version_info[:2] != (3, 12))' 2>/dev/null && { echo "$p"; return 0; }
+  done
+  return 1
+}
+
+do_setup() {
+  if ! PY312="$(find_py312)"; then
+    say "" "Python 3.12 isn't installed, and this project needs exactly 3.12 -- " \
+           "tensorflow-cpu has no wheels for 3.13 or 3.14, so pip cannot resolve it." \
+           "" "    brew install python@3.12" "" "then run ./run setup again." ""
+    exit 1
+  fi
+  say "" "Using $PY312" "Creating $VENV ..."
+  "$PY312" -m venv "$VENV"
+  say "Installing dependencies (about 1 GB, a few minutes) ..."
+  "$PY" -m pip install --upgrade --quiet pip
+  "$PY" -m pip install -r "$REPO/baselines/requirements.txt" \
+                       -r "$REPO/pipeline/requirements.txt"
+  say "" "Done. Try:  ./run anomaly.fleet" ""
+}
+
+usage() {
+  say "" "  ./run <module|script.py> [args...]      no venv to activate" ""
+  if [ -x "$PY" ]; then
+    say "  interpreter: $PY"
+  else
+    say "  interpreter: NOT SET UP -- run  ./run setup  first"
+  fi
+  say "" \
+    "  the demo" \
+    "    ./run anomaly.fleet                  every board on the LAN -> localhost:8002" \
+    "    ./run anomaly.fleet --hotspot        ... on this machine's own hotspot" \
+    "    ./run anomaly.serve                  WESAD replay dashboard -> localhost:8001" \
+    "    ./run anomaly.serve --source device  one board over USB" \
+    "" \
+    "  the board" \
+    "    ./run anomaly.device_check           is the finger on properly?" \
+    "    ./run anomaly.device_source --list-ports" \
+    "    ./run anomaly.device_wifi --status" \
+    "    ./run sketch_aug3a/make_web_assets.py" \
+    "" \
+    "  the experiment" \
+    "    ./run anomaly.protocol run           induced-stress session (master first)" \
+    "    ./run anomaly.protocol report --plot" \
+    "" \
+    "  housekeeping" \
+    "    ./run setup                          build the venv and install everything" \
+    "    ./run doctor                         what is installed, and where" \
+    "    ./run anomaly.db                     the store" \
+    "" \
+    "  or open \"Pulse Control.app\" and press buttons instead." \
+    "  full reference: COMMANDS-macos.md" ""
+}
+
+doctor() {
+  say "" "  repo        $REPO"
+  if [ -x "$PY" ]; then
+    say "  interpreter $PY"
+    say "  version     $("$PY" -c 'import sys; print(sys.version.split()[0])')"
+    say ""
+    # TF prints a CPU-features banner to stderr on import; it is not an error and
+    # it buries the one line that matters here.
+    TF_CPP_MIN_LOG_LEVEL=2 "$PY" - <<'PYEOF'
+import importlib
+for m in ("numpy", "scipy", "pandas", "sklearn", "matplotlib",
+          "tensorflow", "fastapi", "uvicorn", "websockets", "serial", "tkinter"):
+    try:
+        importlib.import_module(m)
+        print("  ok       %s" % m)
+    except Exception as e:
+        print("  MISSING  %s  (%s)" % (m, type(e).__name__))
+PYEOF
+    say "" "  tkinter is only used by Pulse Control's window, and the app does not" \
+           "  need it HERE -- it borrows macOS's own python for that. Everything" \
+           "  else above must say ok."
+  else
+    say "  interpreter NOT SET UP" "" "  run:  ./run setup"
+  fi
+  say ""
+}
+
+[ $# -eq 0 ] && { usage; exit 0; }
+
+case "$1" in
+  setup)            do_setup; exit 0 ;;
+  doctor|--doctor)  doctor; exit 0 ;;
+  -h|--help|help)   usage; exit 0 ;;
+esac
+
+if [ ! -x "$PY" ]; then
+  say "" "The project's virtualenv isn't set up yet ($VENV)." \
+         "" "    ./run setup" "" "does it for you (a few minutes, about 1 GB)." ""
+  exit 1
+fi
+
+cd "$REPO"
+case "$1" in
+  *.py|-*)  exec "$PY" "$@" ;;                 # a script path, or a python flag
+  *)        mod="$1"; shift; exec "$PY" -m "$mod" "$@" ;;
+esac

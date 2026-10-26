@@ -1,16 +1,21 @@
 """Pulse Control -- every command in the project behind a button.
 
-a small window, not the project frozen into an .exe: each button runs the
+a small window, not the project frozen into a binary: each button runs the
 real module (`python -m anomaly.fleet`, ...) with the project's own virtualenv,
-so a `git pull` changes what the buttons do with no rebuild. the .exe is only
-this file, built by launcher/build_exe.bat; it needs nothing but tkinter.
+so a `git pull` changes what the buttons do with no rebuild. the bundle is only
+this file; it needs nothing but tkinter.
 
-    double-click "Pulse Control.exe" in the repo root
-    or:  python launcher/pulse_control.py
+    Windows   launcher\build_exe.bat  -> "Pulse Control.exe" in the repo root
+    macOS     launcher/build_app.sh    -> "Pulse Control.app" in the repo root
+    either    python launcher/pulse_control.py
+
+one file, both platforms: the differences (the hotspot's name and how it is
+switched on, the Tk theme and fonts, which COMMANDS file to open) are read off
+sys.platform once, at the top.
 
 it finds the repo by walking up from wherever it sits, and the virtualenv at
-~/.venvs/sdp07 (the path COMMANDS.md sets up). if that is not where yours is,
-Advanced > Choose Python remembers another, in ~/.pulse_control.json.
+~/.venvs/sdp07 (the path the COMMANDS file sets up). if that is not where yours
+is, Advanced > Choose Python remembers another, in ~/.pulse_control.json.
 """
 from __future__ import annotations
 
@@ -19,6 +24,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -27,14 +33,77 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+
+MAC = sys.platform == "darwin"
+WIN = sys.platform == "win32"
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+except ImportError as e:
+    # Homebrew splits Tk out of python@3.12, so a perfectly good venv can have
+    # every dependency in this project and still not open a window. the error
+    # python gives for that ("No module named '_tkinter'") says nothing about
+    # the fix, and this is the one place anybody meets it.
+    sys.stderr.write(
+        "\nPulse Control needs Tk, and this Python was built without it.\n  (%s)\n\n" % e
+        + ("  brew install python-tk@3.12\n\n"
+           "it installs into the python@3.12 the virtualenv is built on, so just run\n"
+           "this again. if Tk is still missing, re-create the venv on top of it --\n"
+           "COMMANDS-macos.md, section 1.\n\n" if MAC else
+           "  install Python from python.org, or re-run the installer and tick\n"
+           "  'tcl/tk and IDLE'. see COMMANDS-windows.md, section 1.\n\n"))
+    raise SystemExit(2)
 
 APP = "Pulse Control"
-NOWIN = 0x08000000 if sys.platform == "win32" else 0      # CREATE_NO_WINDOW
+NOWIN = 0x08000000 if WIN else 0                          # CREATE_NO_WINDOW
 CONFIG = os.path.join(os.path.expanduser("~"), ".pulse_control.json")
 FLEET = "http://localhost:8002"
 SERVE = "http://localhost:8001"
+
+# what the OS calls its own hotspot, and what the buttons that drive it can
+# promise. `anomaly.hotspot` is the module behind both; only the words differ.
+if MAC:
+    THIS_PC = "this Mac"
+    HOTSPOT = "Internet Sharing"
+    HOTSPOT_VERB = "This Mac switches Internet Sharing on"
+    HOTSPOT_NOTE = ("Must be 2.4 GHz, and set up once by hand in System Settings > General > "
+                    "Sharing > Internet Sharing — macOS gives no script the right to choose "
+                    "which connection to share. After that these buttons read it, and will "
+                    "try to switch it back on.")
+    HOTSPOT_PASS = ("It reads the network name from macOS and asks you for the hotspot's "
+                    "password once (macOS keeps it in the System keychain, which a script "
+                    "cannot read), sends them down the cable, and shows the board's IP.")
+    COMMANDS_DOC = "COMMANDS-macos.md"
+else:
+    THIS_PC = "this PC"
+    HOTSPOT = "Mobile Hotspot"
+    HOTSPOT_VERB = "This PC switches its Mobile Hotspot on"
+    HOTSPOT_NOTE = ("Must be 2.4 GHz. Turn off Windows' power saving for it (Settings > "
+                    "Network & internet > Mobile hotspot), or it switches itself off when idle.")
+    HOTSPOT_PASS = ("It reads the hotspot's name and password from Windows — nothing to type — "
+                    "sends them down the cable, and shows the board's IP.")
+    COMMANDS_DOC = "COMMANDS-windows.md"
+
+# Tk has neither OS's fonts on the other, and the same point size comes out
+# visibly smaller under Windows than under aqua.
+if MAC:
+    UI, MONO = "Helvetica Neue", "Menlo"
+    FS = {"title": 17, "head": 13, "body": 12, "log": 11}
+    # aqua sets the same text ~25% taller, so the tallest tab (Board setup)
+    # wants ~710 px of notebook. a shorter log and a taller window keep it
+    # whole; on a small display the sash still gives the rest back.
+    WANT = (1060, 880)
+    MINSIZE = (900, 600)
+    LOG_LINES = 8
+    LOG_PX = 190
+else:
+    UI, MONO = "Segoe UI", "Consolas"
+    FS = {"title": 15, "head": 11, "body": 10, "log": 9}
+    WANT = (1040, 760)
+    MINSIZE = (860, 600)
+    LOG_LINES = 12
+    LOG_PX = 170
 
 
 # ------------------------------------------------------------------ locating
@@ -71,11 +140,39 @@ def save_config(cfg: dict):
 
 def find_python(cfg: dict) -> str | None:
     home = os.path.expanduser("~")
-    for p in (cfg.get("python"),
-              os.path.join(home, ".venvs", "sdp07", "Scripts", "python.exe"),
-              os.path.join(home, ".venvs", "sdp07", "bin", "python")):
+    venv = os.path.join(home, ".venvs", "sdp07")
+    native = (os.path.join(venv, "Scripts", "python.exe") if WIN
+              else os.path.join(venv, "bin", "python"))
+    other = (os.path.join(venv, "bin", "python") if WIN
+             else os.path.join(venv, "Scripts", "python.exe"))
+    for p in (cfg.get("python"), native, other):
         if p and os.path.isfile(p):
             return p
+    return None
+
+
+def find_python312() -> str | None:
+    """an interpreter to build the venv with. 3.12 exactly: tensorflow-cpu<2.20
+    has no wheels for 3.13 or 3.14, so pip just fails to resolve on a newer one."""
+    names = ["python3.12"]
+    if WIN:
+        names = ["py"]                        # the launcher picks the version: py -3.12
+    for d in ("", "/opt/homebrew/bin/", "/usr/local/bin/",
+              "/Library/Frameworks/Python.framework/Versions/3.12/bin/"):
+        for n in names:
+            p = d + n
+            exe = p if d else shutil.which(n)
+            if not exe or not os.path.isfile(exe):
+                continue
+            try:
+                r = subprocess.run([exe] + (["-3.12"] if WIN else []) +
+                                   ["-c", "import sys; print(sys.version_info[:2])"],
+                                   capture_output=True, text=True, timeout=15,
+                                   creationflags=NOWIN)
+            except Exception:
+                continue
+            if r.returncode == 0 and "(3, 12)" in r.stdout:
+                return exe
     return None
 
 
@@ -94,16 +191,20 @@ def http_text(url: str, timeout: float = 3.0) -> str:
 class Job:
     """one running command: its process, and a thread pumping its output."""
 
-    def __init__(self, app, key, title, args, serial=False, on_exit=None, env=None):
+    def __init__(self, app, key, title, args, serial=False, on_exit=None, env=None,
+                 python=None):
         self.app, self.key, self.title, self.args = app, key, title, args
         self.serial, self.on_exit = serial, on_exit
         self.extra_env = env or {}            # e.g. a password, kept off the command line
+        # normally the project's venv; the first-run setup needs a different one,
+        # because the venv it is about to build does not exist yet
+        self.python = python
         self.proc = None
 
     def start(self):
         env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                    **self.extra_env)
-        cmd = [self.app.python, "-u"] + self.args
+        cmd = [self.python or self.app.python, "-u"] + self.args
         self.proc = subprocess.Popen(cmd, cwd=self.app.repo, env=env, stdin=subprocess.DEVNULL,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      creationflags=NOWIN)
@@ -143,11 +244,23 @@ class App:
         self.cr = False                       # last output ended in a bare \r
 
         root.title(APP)
-        root.geometry("1040x760")
-        root.minsize(860, 600)
+        # never taller than the display: a window whose title bar is off-screen
+        # cannot be moved back on macOS
+        w, h = WANT
+        root.geometry("%dx%d" % (min(w, root.winfo_screenwidth() - 40),
+                                 min(h, root.winfo_screenheight() - 120)))
+        root.minsize(*MINSIZE)
         self._style()
         self._build()
         root.protocol("WM_DELETE_WINDOW", self.quit)
+        if MAC:
+            # cmd-Q and the Dock's Quit bypass WM_DELETE_WINDOW entirely, which
+            # would leave the master and a half-recorded session running with
+            # their window gone.
+            try:
+                root.createcommand("tk::mac::Quit", self.quit)
+            except tk.TclError:
+                pass
         root.after(100, self._drain)
         root.after(500, self._refresh_gates)
         root.after(800, self._poll_fleet)
@@ -158,31 +271,33 @@ class App:
 
     def _style(self):
         s = ttk.Style()
-        if "vista" in s.theme_names():
-            s.theme_use("vista")
-        s.configure("Big.TButton", padding=(14, 9), font=("Segoe UI", 10, "bold"))
+        for theme in (("aqua",) if MAC else ("vista", "winnative")):
+            if theme in s.theme_names():
+                s.theme_use(theme)
+                break
+        s.configure("Big.TButton", padding=(14, 9), font=(UI, FS["body"], "bold"))
         s.configure("TButton", padding=(10, 6))
-        s.configure("Head.TLabel", font=("Segoe UI", 11, "bold"))
+        s.configure("Head.TLabel", font=(UI, FS["head"], "bold"))
         s.configure("Dim.TLabel", foreground="#666")
-        s.configure("Status.TLabel", font=("Segoe UI", 10))
+        s.configure("Status.TLabel", font=(UI, FS["body"]))
 
     def _build(self):
         top = ttk.Frame(self.root, padding=(12, 10, 12, 4))
         top.pack(fill="x")
-        ttk.Label(top, text=APP, font=("Segoe UI", 15, "bold")).pack(side="left")
+        ttk.Label(top, text=APP, font=(UI, FS["title"], "bold")).pack(side="left")
         self.status_lbl = ttk.Label(top, text="", style="Status.TLabel")
         self.status_lbl.pack(side="right")
 
-        panes = ttk.PanedWindow(self.root, orient="vertical")
+        panes = self.panes = ttk.PanedWindow(self.root, orient="vertical")
         panes.pack(fill="both", expand=True, padx=12, pady=(4, 12))
         nb = ttk.Notebook(panes)
         panes.add(nb, weight=3)
         for name, build in (("  Live  ", self._tab_live), ("  Board setup  ", self._tab_board),
                             ("  Stress session  ", self._tab_protocol), ("  Demo  ", self._tab_demo),
                             ("  Advanced  ", self._tab_advanced)):
-            f = ttk.Frame(nb, padding=14)
-            nb.add(f, text=name)
-            build(f)
+            outer = ttk.Frame(nb)
+            nb.add(outer, text=name)
+            build(self._scroller(outer))
 
         logf = ttk.Frame(panes)
         panes.add(logf, weight=2)
@@ -191,16 +306,80 @@ class App:
         ttk.Label(bar, text="Log", style="Head.TLabel").pack(side="left")
         ttk.Button(bar, text="Clear", command=lambda: self.log.delete("1.0", "end")).pack(side="right")
         ttk.Button(bar, text="Copy", command=self._copy_log).pack(side="right", padx=6)
-        self.log = tk.Text(logf, height=12, wrap="word", font=("Consolas", 9),
+        self.log = tk.Text(logf, height=LOG_LINES, wrap="word", font=(MONO, FS["log"]),
                            background="#101418", foreground="#d8dee4", insertbackground="#d8dee4",
                            relief="flat", padx=8, pady=6)
         sb = ttk.Scrollbar(logf, command=self.log.yview)
         self.log.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.log.pack(fill="both", expand=True)
+        # the panes would otherwise each take their requested height, and the
+        # tallest tab asks for nearly the whole window -- leaving the log, which
+        # is where every command's output goes, about four lines tall.
+        self.root.after_idle(self._place_sash)   # retries until the window has a height
         self.log.tag_configure("head", foreground="#7cc4ff")
         self.log.tag_configure("ok", foreground="#5fd38d")
         self.log.tag_configure("bad", foreground="#ff7b72")
+
+    def _scroller(self, parent):
+        """tab content that scrolls when it is taller than the tab.
+
+        Board setup wants ~650 px, and on a 1440x900 display that does not fit
+        beside a log pane worth having. Clipping it just hides buttons with no
+        hint they exist -- which is how the hotspot controls and the whole
+        sensor-check section went missing. The scrollbar only appears when
+        there is something below the fold.
+        """
+        canvas = tk.Canvas(parent, highlightthickness=0, borderwidth=0, takefocus=0)
+        vsb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        body = ttk.Frame(canvas, padding=14)
+        win = canvas.create_window((0, 0), window=body, anchor="nw")
+
+        def resized(_e=None):
+            # stretch the content frame over the whole canvas when it is shorter.
+            # a canvas has no ttk background, so any of it left showing is a
+            # visibly different grey -- this way none of it ever shows.
+            canvas.itemconfigure(win, width=canvas.winfo_width(),
+                                 height=max(body.winfo_reqheight(), canvas.winfo_height()))
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            if body.winfo_reqheight() > canvas.winfo_height():
+                if not vsb.winfo_ismapped():
+                    vsb.pack(side="right", fill="y")
+            elif vsb.winfo_ismapped():
+                vsb.pack_forget()
+                canvas.yview_moveto(0)
+
+        body.bind("<Configure>", resized)
+        canvas.bind("<Configure>", resized)
+
+        def wheel(e):
+            # macOS hands Tk small deltas, Windows multiples of 120
+            step = -e.delta if MAC else -(e.delta // 120)
+            canvas.yview_scroll(step, "units")
+
+        # bind_all while the pointer is over THIS canvas, so the wheel scrolls
+        # the tab under the cursor and nothing else
+        canvas.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", wheel))
+        canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
+        return body
+
+    def _place_sash(self, tries: int = 40):
+        """put the sash LOG_PX up from the bottom, once the window has a size.
+
+        it has none while __init__ is still running, so this re-arms itself
+        until it does -- a one-shot after_idle here silently does nothing.
+        """
+        try:
+            h = self.panes.winfo_height()
+            if h > 420:
+                self.panes.sashpos(0, max(240, h - LOG_PX))
+                return
+        except Exception:
+            pass
+        if tries > 0:
+            self.root.after(50, lambda: self._place_sash(tries - 1))
 
     # ---- small builders ----
 
@@ -232,8 +411,8 @@ class App:
         mode.pack(fill="x", anchor="w")
         self.net_mode = tk.StringVar(value=self.cfg.get("net_mode", "hotspot"))
         ttk.Label(mode, text="Boards are on:").pack(side="left")
-        for val, txt in (("hotspot", "this PC's hotspot"),
-                         ("shared", "the same WiFi as this PC (a phone's hotspot, a router)")):
+        for val, txt in (("hotspot", "%s's hotspot" % THIS_PC),
+                         ("shared", "the same WiFi as %s (a phone's hotspot, a router)" % THIS_PC)):
             ttk.Radiobutton(mode, text=txt, value=val, variable=self.net_mode,
                             command=self._mode_changed).pack(side="left", padx=(8, 0))
         self.mode_hint = ttk.Label(f, text="", style="Dim.TLabel", wraplength=900, justify="left")
@@ -267,11 +446,10 @@ class App:
 
     def _tab_board(self, f):
         row = self._section(f, "Put a board on WiFi  (USB, once per board)",
-                            "Plug the board into this PC by USB and press the button. It reads the "
-                            "hotspot's name and password from Windows — nothing to type — sends them "
-                            "down the cable, and shows the board's IP. Close the Arduino Serial "
-                            "Monitor first: only one program can use the USB port.")
-        self._btn(row, "Connect board to this PC's hotspot", lambda: self.run(
+                            "Plug the board into %s by USB and press the button. %s Close the "
+                            "Arduino Serial Monitor first: only one program can use the USB port."
+                            % (THIS_PC, HOTSPOT_PASS))
+        self._btn(row, "Connect board to %s's hotspot" % THIS_PC, lambda: self.run(
             "wifi", "Connect board to hotspot", ["-m", "anomaly.device_wifi", "--hotspot"], serial=True),
             when=self.serial_free, big=True)
         self._btn(row, "Which network is it on?", lambda: self.run(
@@ -280,10 +458,11 @@ class App:
         self._btn(row, "Forget all its networks", self.forget_wifi, when=self.serial_free)
 
         row = self._section(f, "Add a WiFi network to a board",
-                            "For a network that isn't this PC — a phone's hotspot, a router. "
+                            "For a network that isn't %s — a phone's hotspot, a router. "
                             "Save for later: the board tries it whenever its current network is out of "
                             "reach. Connect now: it leaves its current network and joins this one; if "
-                            "that fails it comes back within 30 s. A board remembers up to 5 networks.")
+                            "that fails it comes back within 30 s. A board remembers up to 5 networks."
+                            % THIS_PC)
         form = ttk.Frame(row)
         form.pack(side="left", anchor="w")
         self.w_via = tk.StringVar(value="wifi")
@@ -314,9 +493,7 @@ class App:
         self._btn(row, "Saved networks", self.list_networks, when=net_ok)
         self._btn(row, "Forget this network", self.forget_network, when=net_ok)
 
-        row = self._section(f, "The hotspot",
-                            "Must be 2.4 GHz. Turn off Windows' power saving for it (Settings > "
-                            "Network & internet > Mobile hotspot), or it switches itself off when idle.")
+        row = self._section(f, "The hotspot  (%s)" % HOTSPOT, HOTSPOT_NOTE)
         self._btn(row, "Hotspot status", lambda: self.run(
             "hotspot", "Hotspot status", ["-m", "anomaly.hotspot"], on_exit=self._hotspot_soon),
             when=lambda: self.ready() and not self.is_running("hotspot"))
@@ -417,10 +594,12 @@ class App:
         self._btn(row, "Back up…", self.backup_db, when=lambda: self.ready() and not self.is_running("db"))
 
         row = self._section(f, "This app")
+        self._btn(row, "Set up the virtualenv…", self.setup_venv,
+                  when=lambda: self.repo is not None and not self.is_running("setup"))
         self._btn(row, "Check setup", self.check_setup, when=lambda: self.python is not None)
         self._btn(row, "Choose Python…", self.choose_python)
         self._btn(row, "Open project folder", lambda: self.open_path())
-        self._btn(row, "Open COMMANDS.md", lambda: self.open_path("COMMANDS.md"))
+        self._btn(row, "Open %s" % COMMANDS_DOC, lambda: self.open_path(COMMANDS_DOC))
 
     # ---- running things ----
 
@@ -434,8 +613,9 @@ class App:
     def serial_free(self) -> bool:
         return self.ready() and not any(j.serial and j.running() for j in self.jobs.values())
 
-    def run(self, key, title, args, serial=False, on_exit=None, on_start=None, env=None):
-        if not self.ready():
+    def run(self, key, title, args, serial=False, on_exit=None, on_start=None, env=None,
+            python=None):
+        if self.repo is None or (python is None and self.python is None):
             self._need_setup()
             return
         if self.is_running(key):
@@ -443,7 +623,8 @@ class App:
         if serial and not self.serial_free():
             messagebox.showinfo(APP, "Another USB job is using the board. Stop it first.")
             return
-        job = Job(self, key, title, args, serial=serial, on_exit=on_exit, env=env)
+        job = Job(self, key, title, args, serial=serial, on_exit=on_exit, env=env,
+                  python=python)
         self.jobs[key] = job
         self._write("\n── %s ──\n" % title, "head")
         try:
@@ -506,11 +687,11 @@ class App:
     # ---- networks ----
 
     def _mode_changed(self, save=True):
-        hint = {"hotspot": "This PC switches its Windows hotspot on and the boards join it. "
-                           "Best when the board is near this PC.",
-                "shared": "Put this PC on the same WiFi as the boards first (e.g. join your phone's "
+        hint = {"hotspot": "%s and the boards join it. Best when the board is near %s."
+                           % (HOTSPOT_VERB, THIS_PC),
+                "shared": "Put %s on the same WiFi as the boards first (e.g. join your phone's "
                           "hotspot), then start. Give a board that network on Board setup > Add a "
-                          "WiFi network."}[self.net_mode.get()]
+                          "WiFi network." % THIS_PC}[self.net_mode.get()]
         self.mode_hint.configure(text=hint)
         if save:
             self.cfg["net_mode"] = self.net_mode.get()
@@ -518,7 +699,7 @@ class App:
 
     def start_master(self):
         if self.net_mode.get() == "hotspot":
-            self.run("fleet", "Master (this PC's hotspot)", ["-m", "anomaly.fleet", "--hotspot"])
+            self.run("fleet", "Master (%s's hotspot)" % THIS_PC, ["-m", "anomaly.fleet", "--hotspot"])
         else:
             self.run("fleet", "Master (shared WiFi)", ["-m", "anomaly.fleet"])
 
@@ -689,10 +870,65 @@ class App:
         if path:
             self.run("db", "Back up store", ["-m", "anomaly.db", "--backup", path])
 
+    def setup_venv(self):
+        """build ~/.venvs/sdp07 and install the requirements, from in here.
+
+        this is what makes the app worth double-clicking on a fresh clone: the
+        window opens on any Mac with Tk, and the one thing it cannot do without
+        is the virtualenv, so it offers to make it rather than only complaining.
+        """
+        py = find_python312()
+        if not py:
+            messagebox.showerror(APP, "Python 3.12 is not installed, and the project needs "
+                                      "exactly 3.12 (tensorflow-cpu has no wheels for 3.13 "
+                                      "or 3.14).\n\n" +
+                                      ("Install it with:\n\n    brew install python@3.12\n\n"
+                                       if MAC else
+                                       "Install it from python.org, ticking 'tcl/tk and "
+                                       "IDLE'.\n\n") +
+                                      "Then come back and press this again.")
+            return
+        venv = os.path.join(os.path.expanduser("~"), ".venvs", "sdp07")
+        vpy = (os.path.join(venv, "Scripts", "python.exe") if WIN
+               else os.path.join(venv, "bin", "python"))
+        if os.path.isfile(vpy) and not messagebox.askyesno(
+                APP, "%s already exists.\n\nRe-install the dependencies into it?" % venv):
+            return
+        if not messagebox.askyesno(
+                APP, "Create %s and install everything the project needs?\n\n"
+                     "That downloads roughly 1 GB (TensorFlow is most of it) and takes a "
+                     "few minutes on a good connection. The log below shows progress, and "
+                     "you can keep using this window.\n\nUsing: %s" % (venv, py)):
+            return
+
+        def installed(rc):
+            if rc != 0:
+                self._write("\nthe install did not finish — see the messages above.\n", "bad")
+                return
+            self.python = find_python(self.cfg)
+            self._write("\nready. every button above is live now.\n", "ok")
+
+        def created(rc):
+            if rc != 0:
+                self._write("\ncould not create the virtualenv.\n", "bad")
+                return
+            self.run("setup", "Install the dependencies (a few minutes)",
+                     ["-m", "pip", "install", "--upgrade", "pip"], python=vpy,
+                     on_exit=lambda _rc: self.run(
+                         "setup", "Install the dependencies (a few minutes)",
+                         ["-m", "pip", "install",
+                          "-r", os.path.join("baselines", "requirements.txt"),
+                          "-r", os.path.join("pipeline", "requirements.txt")],
+                         python=vpy, on_exit=installed))
+
+        args = (["-3.12", "-m", "venv", venv] if WIN else ["-m", "venv", venv])
+        self.run("setup", "Create the virtualenv", args, python=py, on_exit=created)
+
     def check_setup(self):
         code = ("import importlib, sys\n"
                 "print('python', sys.version.split()[0], sys.executable)\n"
-                "for m in ('numpy','scipy','fastapi','uvicorn','websockets','serial','matplotlib','tensorflow'):\n"
+                "for m in ('numpy','scipy','fastapi','uvicorn','websockets','serial',\n"
+                "          'matplotlib','tensorflow','tkinter'):\n"
                 "    try:\n"
                 "        importlib.import_module(m); print('  ok     ', m)\n"
                 "    except Exception as e:\n"
@@ -700,8 +936,9 @@ class App:
         self.run("setup", "Check setup", ["-c", code])
 
     def choose_python(self):
-        p = filedialog.askopenfilename(title="The project's Python (in its virtualenv)",
-                                       filetypes=[("Python", "python.exe python"), ("All", "*")])
+        p = filedialog.askopenfilename(
+            title="The project's Python (in its virtualenv)",
+            filetypes=[("Python", "python.exe python"), ("All", "*")] if WIN else [("All", "*")])
         if p:
             self.python = p
             self.cfg["python"] = p
@@ -788,7 +1025,13 @@ class App:
                                    text=True, timeout=60, creationflags=NOWIN,
                                    env=dict(os.environ, PYTHONIOENCODING="utf-8"))
                 m = re.search(r"hotspot '([^']*)': (\w+)", r.stdout)
-                self.q.put(("hotspot", "%s %s" % (m.group(1), m.group(2).lower()) if m else "unavailable"))
+                if m:
+                    st = "%s %s" % (m.group(1), m.group(2).lower())
+                elif "not set up" in r.stdout:
+                    st = "not set up"          # macOS, never configured in Settings
+                else:
+                    st = "unavailable"
+                self.q.put(("hotspot", st))
             except Exception:
                 self.q.put(("hotspot", "unavailable"))
         threading.Thread(target=go, daemon=True).start()
@@ -870,8 +1113,9 @@ class App:
         ids = [d["id"] for d in devs]
         self.p_dev_box["values"] = [""] + ids
         if self.is_running("fleet") and not devs:
-            self.empty_lbl.configure(text="No boards yet. Is the board powered, and on this PC's hotspot? "
-                                          "(Board setup > Connect board to this PC's hotspot)")
+            self.empty_lbl.configure(text="No boards yet. Is the board powered, and on %s's hotspot? "
+                                          "(Board setup > Connect board to %s's hotspot)"
+                                          % (THIS_PC, THIS_PC))
         else:
             self.empty_lbl.configure(text="" if devs else "Start the master to see boards here.")
 
@@ -895,8 +1139,11 @@ class App:
             messagebox.showerror(APP, "Can't find the project. Put this app inside the "
                                       "Spring-2026-COSC497-SDP-Group-07 folder.")
         else:
-            messagebox.showerror(APP, "Can't find the project's Python.\n\nSet up the virtualenv "
-                                      "(COMMANDS.md, section 1), or use Advanced > Choose Python.")
+            if messagebox.askyesno(APP, "The project's virtualenv isn't set up yet, so there "
+                                        "is nothing for the buttons to run.\n\nSet it up now? "
+                                        "(a few minutes, about 1 GB)\n\nAlready have one "
+                                        "elsewhere? Choose No, then Advanced > Choose Python."):
+                self.setup_venv()
 
     def _intro(self):
         self._write("%s\n" % APP, "head")
@@ -904,17 +1151,72 @@ class App:
                     None if self.repo else "bad")
         self._write("python:  %s\n" % (self.python or "NOT FOUND — Advanced > Choose Python"),
                     None if self.python else "bad")
-        self._write("\nstart here: Board setup > Connect board (once per board), then Live > Start master.\n")
+        if self.repo and not self.python:
+            self._write("\nthe virtualenv isn't set up yet — Advanced > Set up the virtualenv, "
+                        "and the rest of the buttons come alive.\n", "head")
+        else:
+            self._write("\nstart here: Board setup > Connect board (once per board), "
+                        "then Live > Start master.\n")
+
+
+TK_MIN = 8.6
+TK_TOO_OLD = (
+    "Pulse Control needs Tk 8.6 or newer. This Python has Tk %s.\n\n"
+    "macOS still bundles Tk 8.5.9, a build from 2010 that Apple deprecated long ago. "
+    "Under it ttk.PanedWindow never lays out -- every pane stays 1x1 and unmapped -- "
+    "so this window opens completely empty and nothing reports an error.\n\n"
+    "Use a different Python:\n\n"
+    "    brew install python@3.12 python-tk@3.12\n\n"
+    "\"Pulse Control.app\" picks a suitable one by itself; you only see this when "
+    "running pulse_control.py directly.")
 
 
 def main():
     root = tk.Tk()
-    if "--selftest" in sys.argv:              # build everything, show nothing, exit
-        root.withdraw()
-        App(root)
-        root.after(1500, root.destroy)
-        root.mainloop()
-        print("selftest ok")
+    if tk.TkVersion < TK_MIN:
+        # refuse rather than draw a blank rectangle: an empty window with no
+        # error is the single most confusing thing this app could do, and it is
+        # exactly what shipped before this check existed.
+        msg = TK_TOO_OLD % tk.TkVersion
+        sys.stderr.write("\n" + msg + "\n\n")
+        if "--selftest" not in sys.argv:      # the dialog is modal; keep it out of scripts
+            try:
+                root.withdraw()
+                messagebox.showerror(APP, msg)
+            except Exception:
+                pass
+        raise SystemExit(2)
+    if "--selftest" in sys.argv:              # build it for real, check it LAID OUT, exit
+        app = App(root)
+        deadline = time.time() + 2.0      # let the window map and the sash settle
+        while time.time() < deadline:
+            root.update()
+            if getattr(app, "panes", None) is not None and app.panes.winfo_height() > 420:
+                root.update_idletasks()
+                break
+            time.sleep(0.02)
+        root.update_idletasks()
+        bad = []
+        # "the widgets exist" is not the test. Tk 8.5 builds every one of them
+        # and then lays none of them out, which is how a blank window shipped.
+        # Measure what actually got drawn.
+        def walk(w):
+            for c in w.winfo_children():
+                if c.winfo_class() in ("TNotebook", "TPanedwindow", "Text"):
+                    floor = 120 if c.winfo_class() == "Text" else 200
+                    if not c.winfo_ismapped() or c.winfo_width() < 200 or c.winfo_height() < floor:
+                        bad.append("%s %dx%d mapped=%s" % (c.winfo_class(), c.winfo_width(),
+                                                           c.winfo_height(), c.winfo_ismapped()))
+                walk(c)
+        walk(root)
+        tabs = [t for t in app.tabs] if hasattr(app, "tabs") else []
+        root.destroy()
+        if bad:
+            print("selftest FAILED -- built but never laid out:")
+            for b in bad:
+                print("   ", b)
+            raise SystemExit(1)
+        print("selftest ok (Tk %s, panes laid out)" % tk.TkVersion)
         return
     App(root)
     root.mainloop()

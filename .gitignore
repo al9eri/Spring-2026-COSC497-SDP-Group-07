@@ -46,7 +46,10 @@ anomaly/saved/ae_float32.tflite
 # recorded calm from the sensor — personal biometric data, and re-derivable
 anomaly/saved/device_calm.npz
 
-# wifi credentials for the board (copy secrets.example.h)
+# wifi credentials for the board. secrets.h is YOURS and never committed;
+# secrets.example.h is the empty template you copy it from and IS committed --
+# the sketch does #include "secrets.h" and will not compile until you have made
+# one, so a fresh clone needs something to copy.
 sketch_aug3a/secrets.h
 
 # editor cruft from the Arduino web IDE
@@ -60,5 +63,14 @@ sketch_aug3a/web_assets.h
 # --- the master's store: subject data, never committed ---
 /data
 
-# the control panel exe -- built locally by launcher/build_exe.bat, never committed
+# the control panel exe -- built locally by launcher/build_exe.bat (Windows)
 /Pulse Control.exe
+
+# "Pulse Control.app" (the macOS wrapper from launcher/make_app.sh) IS committed
+# -- it is ~170 KB and carries no code, so a fresh clone has the icon already.
+# What is NOT committed is the frozen standalone bundle, which is 29 MB of
+# bundled interpreter and only needed on a Mac with no usable Python.
+/Pulse Control (standalone).app/
+
+# iconutil's intermediate; launcher/icon/PulseControl.icns is committed
+launcher/icon/PulseControl.iconset/

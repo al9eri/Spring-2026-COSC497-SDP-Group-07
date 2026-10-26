@@ -180,16 +180,19 @@ built on the device path already (`anomaly/device_source.py`, `anomaly/device_ch
 `tensorflow-cpu<2.20`, which has no wheels for 3.13 or 3.14 — on a newer
 interpreter pip simply fails to resolve tensorflow. keep the venv outside the repo
 and outside any synced folder (iCloud/OneDrive). full setup in
-[`COMMANDS.md`](COMMANDS.md).
+[`COMMANDS-macos.md`](COMMANDS-macos.md) / [`COMMANDS-windows.md`](COMMANDS-windows.md).
 
-**no commands needed:** after the install below, double-click
-`launcher\build_exe.bat` once, then use `Pulse Control.exe` — a button for every
-step (board → hotspot, master, stress sessions, demo, reports).
+**no commands needed — double-click `Pulse Control.app`.** on macOS it is
+already in the folder (committed, 170 KB, opens in a second); on Windows build
+it once with `launcher\build_exe.bat`. a button for every step — board →
+hotspot, master, stress sessions, demo, reports — and **Advanced → Set up the
+virtualenv…** does the install below for you if you have not run it. same
+window, same buttons, both OSes.
 
 ```bash
-# install dependencies (one-time)
-python3.12 -m venv ~/.venvs/sdp07
-~/.venvs/sdp07/bin/python -m pip install -r baselines/requirements.txt -r pipeline/requirements.txt
+# install dependencies (one-time). ./run needs no venv activation, ever.
+./run setup                       # Windows: .\run.ps1 setup
+./run doctor                      # what is installed, and where
 
 # live dashboards — the int8 model ships in anomaly/saved/, so this runs without WESAD
 python3 -m anomaly.serve          # → http://localhost:8001  ( / Pulse Watch · /dev developer )
@@ -209,11 +212,13 @@ python3 -m anomaly.board_export --check 300 && python3 -m anomaly.board_export
 # evaluate the detectors on WESAD (needs WESAD downloaded; leave-one-subject-out)
 python3 -m anomaly.run --model ae --bottleneck 256 --ch-cap 32   # baseline | ae | ssl
 
-# retrain + compress the deployable int8 model (full reference: COMMANDS.md)
+# retrain + compress the deployable int8 model (full reference: the COMMANDS file for your OS)
 python3 -m anomaly.export --bottleneck 256 --ch-cap 32 && python3 -m anomaly.compress
 ```
 
-see [`COMMANDS.md`](COMMANDS.md) for the full command cheat sheet, and
+see [`COMMANDS-macos.md`](COMMANDS-macos.md) or
+[`COMMANDS-windows.md`](COMMANDS-windows.md) for the full command cheat sheet —
+one per OS, same tasks and same outcomes — and
 [`HANDOFF.md`](HANDOFF.md) for the current state, the gotchas that cost real
 time, and the ranked next steps.
 
@@ -271,10 +276,19 @@ pipeline/                            real-time streaming + dashboard (carries ov
 sketch_aug3a/                        ESP32-S3 firmware: streams IR/RED + vitals, TFT display
   sketch_aug3a.ino                   sensing, conditioning, WiFi, web server, websocket, TFT verdict
   make_web_assets.py                 gzip the dashboard into web_assets.h (re-run after ANY UI edit)
-  secrets.example.h                  copy to secrets.h (gitignored) for the WiFi credentials
+  secrets.example.h                  copy to secrets.h (gitignored) and fill in the WiFi credentials
+                                     — the sketch will not compile until that copy exists
 pulse/                               Pulse Watch product UI (Zayed) — served at / by anomaly/serve.py
   Pulse Watch.dc.html / support.js   design-tool export; speaks serve.py's /ws protocol
 WESAD/ · Code & Data/                datasets (not in git)
-COMMANDS.md                          command cheat sheet
+run / run.ps1                        run anything without activating a venv
+COMMANDS-macos.md                    command cheat sheet — macOS
+COMMANDS-windows.md                  command cheat sheet — Windows
+Pulse Control.app                    the macOS double-click icon (committed, 170 KB)
+launcher/                            Pulse Control: one window, every command behind a button
+  pulse_control.py                   the app itself (tkinter; both platforms)
+  make_app.sh                        rebuilds "Pulse Control.app" (the wrapper)
+  build_app.sh / build_exe.bat       frozen standalone bundle / "Pulse Control.exe"
+  icon/                              the icon drawing + PulseControl.icns
 README.md                            this file
 ```

@@ -104,6 +104,8 @@ Appropriate for mental stress; far too slow for falls.
 has no wheels for 3.13/3.14; pip simply fails to resolve. Keep the venv outside
 the repo and outside any synced folder (iCloud/OneDrive).
 
+Windows (PowerShell):
+
 ```powershell
 winget install --id Python.Python.3.12 -e     # then open a NEW terminal
 py -3.12 -m venv $HOME\.venvs\sdp07
@@ -113,6 +115,21 @@ $PY = "$HOME\.venvs\sdp07\Scripts\python.exe"
 
 PowerShell parses a line starting with `$HOME\...` as an expression, so the call
 operator `&` is required. `Activate.ps1` also works and then `python3` is on PATH.
+
+macOS:
+
+```bash
+brew install python@3.12 python-tk@3.12       # python-tk only for Pulse Control
+python3.12 -m venv ~/.venvs/sdp07
+~/.venvs/sdp07/bin/python -m pip install -r baselines/requirements.txt -r pipeline/requirements.txt
+```
+
+Then `source ~/.venvs/sdp07/bin/activate`. Do **not** rely on a bare `python`
+after that if your zsh defines `python` as a function — check with
+`python -c "import sys; print(sys.executable)"`, not `which python`.
+
+Per-OS command sheets: [`COMMANDS-macos.md`](COMMANDS-macos.md),
+[`COMMANDS-windows.md`](COMMANDS-windows.md).
 
 **Arduino libraries:** ESP Async WebServer and Async TCP, both **by ESP32Async**
 (older forks do not build against ESP32 core 3.x).

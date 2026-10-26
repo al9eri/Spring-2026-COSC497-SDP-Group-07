@@ -27,7 +27,7 @@ if /i not "%~1"=="force" if exist "%EXE%" (
 
 if not exist "%BASE%" (
   echo Can't find the project's Python at %BASE%
-  echo Set up the virtualenv first: COMMANDS.md, section 1.
+  echo Set up the virtualenv first: COMMANDS-windows.md, section 1.
   pause
   exit /b 1
 )

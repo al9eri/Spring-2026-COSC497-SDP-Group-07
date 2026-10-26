@@ -33,8 +33,9 @@
 #include <esp_mac.h>      // esp_read_mac: the MAC without the driver
 #include <Preferences.h>
 
-// Copy secrets.example.h to secrets.h and fill it in. It is gitignored, so
-// credentials stay off the repository while still being hard-coded for you.
+// Copy secrets.example.h (beside this file) to secrets.h and fill it in -- the
+// compiler stops here until you do. secrets.h is gitignored, so credentials
+// stay off the repository while still being hard-coded for you.
 #include "secrets.h"
 
 #include <ESPAsyncWebServer.h>
