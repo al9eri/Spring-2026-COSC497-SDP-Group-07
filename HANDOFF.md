@@ -9,7 +9,7 @@ Context for a fresh session. Branch `esp32`.
 ONE command runs the whole system:
 
 ```bash
-python3 -m anomaly.fleet          # roster at http://localhost:8002
+./run anomaly.fleet          # roster at http://localhost:8002
 ```
 
 It scans every local subnet, finds boards by their `/health`, opens a websocket
@@ -48,9 +48,9 @@ an on-device model would fill.
 Older, still working:
 
 ```bash
-python3 -m anomaly.serve                  # WESAD replay demo, no hardware
-python3 -m anomaly.serve --source device  # PC hosts dashboard, sensor over USB
-python3 -m anomaly.master --host <ip>     # single device, headless, for debugging
+./run anomaly.serve                  # WESAD replay demo, no hardware
+./run anomaly.serve --source device  # PC hosts dashboard, sensor over USB
+./run anomaly.master --host <ip>     # single device, headless, for debugging
 ```
 
 ---
@@ -100,35 +100,19 @@ Appropriate for mental stress; far too slow for falls.
 
 ## Setup on a fresh machine
 
-**Python 3.12** — `baselines/requirements.txt` pins `tensorflow-cpu<2.20`, which
-has no wheels for 3.13/3.14; pip simply fails to resolve. Keep the venv outside
-the repo and outside any synced folder (iCloud/OneDrive).
-
-Windows (PowerShell):
-
-```powershell
-winget install --id Python.Python.3.12 -e     # then open a NEW terminal
-py -3.12 -m venv $HOME\.venvs\sdp07
-$PY = "$HOME\.venvs\sdp07\Scripts\python.exe"
-& $PY -m pip install -r baselines\requirements.txt -r pipeline\requirements.txt
-```
-
-PowerShell parses a line starting with `$HOME\...` as an expression, so the call
-operator `&` is required. `Activate.ps1` also works and then `python3` is on PATH.
-
-macOS:
-
 ```bash
-brew install python@3.12 python-tk@3.12       # python-tk only for Pulse Control
-python3.12 -m venv ~/.venvs/sdp07
-~/.venvs/sdp07/bin/python -m pip install -r baselines/requirements.txt -r pipeline/requirements.txt
+./run setup           # Windows: .\run.ps1 setup
 ```
 
-Then `source ~/.venvs/sdp07/bin/activate`. Do **not** rely on a bare `python`
-after that if your zsh defines `python` as a function — check with
-`python -c "import sys; print(sys.executable)"`, not `which python`.
+Python 3.12 only — `tensorflow-cpu<2.20` has no 3.13/3.14 wheels, so pip simply
+fails to resolve on anything newer. `./run setup` finds a 3.12 or tells you what
+to install. Keep the venv outside the repo and outside any synced folder
+(iCloud/OneDrive).
 
-Per-OS command sheets: [`COMMANDS-macos.md`](COMMANDS-macos.md),
+Or skip the terminal: open `Pulse Control.app` (macOS — it is in the repo) and
+press **Advanced → Set up the virtualenv…**.
+
+Step-by-step, per OS: [`COMMANDS-macos.md`](COMMANDS-macos.md) ·
 [`COMMANDS-windows.md`](COMMANDS-windows.md).
 
 **Arduino libraries:** ESP Async WebServer and Async TCP, both **by ESP32Async**
@@ -141,32 +125,42 @@ partition scheme with a large enough app partition.
 
 ## Gotchas that cost real time
 
-1. **One process owns the serial port.** Stop `serve` / `device_check` /
-   `device_wifi` and close the Arduino Serial Monitor before uploading.
-2. **`USB CDC On Boot` must be Enabled.** With it off the port enumerates and
-   opens fine, and you get total silence.
-3. **Power-cycle, don't reset.** A reset mid-I2C leaves the MAX30102 holding SDA
-   low. RESET does not re-power the peripherals.
-4. **Do not leave USB plugged in with nothing reading it.** `Serial.write()`
-   blocks until the CDC timeout once the buffer fills; at 40 samples/s that
-   throttled the sample loop to one iteration every few seconds and looked
-   exactly like the sensor dying. Fixed with `setTxTimeoutMs(0)` and an
-   `if (!Serial) return` guard — but suspect it first if the loop crawls.
-   Diagnose with `/health`: `cond` frozen + `ticks` barely moving = this.
-5. **Re-run `make_web_assets.py` after ANY dashboard edit**, or the board keeps
-   serving the old page from flash.
-6. **Pulse Watch falls back to a MOCK replay** if the websocket does not open in
-   3 s, complete with fabricated events. It looks like it works when it doesn't.
-   `/dev` has no such fallback.
-7. **2.4 GHz only** — the ESP32 cannot join a 5 GHz-only SSID.
-8. **Weak WiFi shows up as lag then a hang.** `ws.textAll()` only queues;
+Symptom-to-fix lives in the COMMANDS files, section 6. This list is why each one
+cost a day, and which are **still live** versus already fixed.
+
+Still live — these will bite you:
+
+1. **`USB CDC On Boot` must be Enabled.** With it off the port enumerates and
+   opens fine, and you get total silence. Nothing anywhere reports it.
+2. **Power-cycle, don't reset.** A reset mid-I2C leaves the MAX30102 holding SDA
+   low; RESET does not re-power the peripherals. A white TFT after a flash is
+   this.
+3. **The board resets when the serial port is opened**, so a host tool must wait
+   for `# setup done` before sending commands. `device_wifi` learned this the
+   hard way: it used to report the *old* network's IP as if it were the new one.
+4. **HR below ~55 bpm reads double** — the dicrotic notch clears the prominence
+   bar. Inherited from the host algorithm, so the board and the dashboard agree
+   with each other and are both wrong.
+5. **One process owns the serial port**, and **`make_web_assets.py` must be
+   re-run after any dashboard edit** or the board serves the old page from
+   flash. Both are in COMMANDS §6; they are listed here only because they
+   account for most "it's broken" messages.
+
+Already fixed — do not re-diagnose these:
+
+6. **The sample loop crawling** looked exactly like the sensor dying. It was
+   `Serial.write()` blocking until the CDC timeout once the buffer filled, with
+   USB plugged in and nothing reading it. Fixed with `setTxTimeoutMs(0)` and an
+   `if (!Serial) return` guard. If the loop ever crawls again, check `/health`
+   first: `cond` frozen + `ticks` barely moving is the signature.
+7. **Pulse Watch used to fall back to a MOCK replay** when the websocket did not
+   open within 3 s, fabricated events and all — indistinguishable from working.
+   It now stays **offline** and says so; the demo is a choice you make, never a
+   fallback. Keep it that way.
+8. **Weak WiFi showed up as lag, then a hang**: `ws.textAll()` only queues, and
    queueing faster than the link drains kills the heap. The firmware now skips
    frames when `availableForWriteAll()` is false. Below about −80 dBm, move the
-   board closer.
-9. **HR below ~55 bpm reads double** — the dicrotic notch clears the
-   prominence bar. Inherited from the host algorithm, so both show it.
-10. **The board resets when the serial port is opened**, so a host tool must wait
-   for `# setup done` before sending commands.
+   board closer anyway.
 
 ---
 
@@ -227,7 +221,7 @@ master is away.
 Dense layers, so a smaller bottleneck may cut it 4x for little accuracy loss:
 
 ```bash
-python3 -m anomaly.run --model ae --bottleneck 64 --ch-cap 32
+./run anomaly.run --model ae --bottleneck 64 --ch-cap 32
 ```
 
 **5. Dashboard honesty.** Strip `/dev`'s WESAD-only panels (ground truth,

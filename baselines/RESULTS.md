@@ -70,10 +70,10 @@ real time at the 50 Hz target.
 ## reproducing
 
 ```bash
-python3 baselines/train.py --preset phase_a    # ~12 min on CPU
-python3 baselines/quantize.py                  # int8 TFLite
-python3 baselines/inference_demo.py            # verify end-to-end
-python3 baselines/make_plots.py                # regenerate result PNGs
+./run baselines/train.py --preset phase_a  # ~12 min on CPU
+./run baselines/quantize.py                # int8 TFLite
+./run baselines/inference_demo.py          # verify end-to-end
+./run baselines/make_plots.py              # regenerate result PNGs
 ```
 
 artifacts land in `baselines/runs/{timestamp}_phase_a/`: `config.json`,

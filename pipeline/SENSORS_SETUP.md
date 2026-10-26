@@ -165,10 +165,10 @@ to the dashboard.
 
 ```bash
 # synthetic demo (unchanged)
-python3 pipeline/server.py
+./run pipeline/server.py
 
 # real sensors on the Pi
-REAL_SENSORS=1 python3 pipeline/server.py
+REAL_SENSORS=1 ./run pipeline/server.py
 ```
 
 ---

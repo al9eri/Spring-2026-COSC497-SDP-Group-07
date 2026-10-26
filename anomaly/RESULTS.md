@@ -60,7 +60,7 @@ bottleneck) fixes it. sweeping the latent width (LOSO, 15 subjects, one harness 
   choice is mildly optimistic; the clean monotonic trend makes the *architecture* decision
   (add a real bottleneck) robust, not a fluke.
 
-reproduce: `python3 -m anomaly.run --model ae --bottleneck 256 --ch-cap 32`
+reproduce: `./run anomaly.run --model ae --bottleneck 256 --ch-cap 32`
 
 ## episode-level detection (what the product actually does)
 
@@ -84,7 +84,7 @@ ch-cap32 model, LOSO across 15 subjects:
   exposes. **K and the 90%-spec point are pre-committed** — not tuned to flatter a number.
 - further FA/h cuts (future work): signal-quality gating that rejects noisy windows (S3),
   and per-user calibration on the wearer's own calm.
-- reproduce: `python3 -m anomaly.run --model ae --bottleneck 256 --ch-cap 32 [--episode-k 8]`
+- reproduce: `./run anomaly.run --model ae --bottleneck 256 --ch-cap 32 [--episode-k 8]`
 
 ## the real finding: subject variance
 
@@ -118,7 +118,7 @@ of each subject's calm calibrates; the rest + all their stress is the test set):
 - (zero-shot here is ~0.75, not 0.64 as in the table above — the test set differs
   because calibration holds out a calm slice; compare within this table only.)
 
-regenerate: `python3 -m anomaly.calibrate`
+regenerate: `./run anomaly.calibrate`
 
 ## edge compression (O7)
 
@@ -149,7 +149,7 @@ cost of compression, pooled calm-vs-stress windows (3,342 calm / 1,814 stress):
   the compression delta, which is the point.)
 
 artifacts: `anomaly/saved/ae_int8.tflite` (+ `ae_float32.tflite`). regenerate:
-`python3 -m anomaly.compress`
+`./run anomaly.compress`
 
 ## caveats
 
@@ -163,10 +163,10 @@ artifacts: `anomaly/saved/ae_int8.tflite` (+ `ae_float32.tflite`). regenerate:
 ## reproduce
 
 ```bash
-python3 -m anomaly.run --model baseline   # ~0.64 PR-AUC
-python3 -m anomaly.run --model ae         # ~0.67 (O1)
-python3 -m anomaly.run --model ssl        # ~0.68 (O2)
-python3 -m anomaly.make_plots             # regenerate the figures above
+./run anomaly.run --model baseline  # ~0.64 PR-AUC
+./run anomaly.run --model ae        # ~0.67 (O1)
+./run anomaly.run --model ssl       # ~0.68 (O2)
+./run anomaly.make_plots            # regenerate the figures above
 ```
 
 (windowed data is cached after the first run, so re-runs skip the 13 GB read.)

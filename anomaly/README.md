@@ -28,13 +28,15 @@ built on WESAD, evaluated with sensitivity-first, subject-wise metrics.
 
 ## run it
 
+from the repo root (`./run` finds the project's interpreter — no venv to activate):
+
 ```bash
-python3 -m anomaly.run --model baseline                  # statistical baseline
-python3 -m anomaly.run --model ae --epochs 30            # O1 autoencoder (original)
-python3 -m anomaly.run --model ae --bottleneck 64        # O1 + real latent (the model fix)
-python3 -m anomaly.run --model ae --bottleneck 64 --denoise 0.15   # + noise robustness
-python3 -m anomaly.run --model ssl --epochs 50           # O2 self-supervised encoder
-python3 -m anomaly.run --model baseline --max-subjects 3 # quick check
+./run anomaly.run --model baseline                            # statistical baseline
+./run anomaly.run --model ae --epochs 30                      # O1 autoencoder (original)
+./run anomaly.run --model ae --bottleneck 256 --ch-cap 32     # DEPLOYED: real latent, ESP32-sized
+./run anomaly.run --model ae --bottleneck 256 --denoise 0.15  # + noise robustness
+./run anomaly.run --model ssl --epochs 50                     # O2 self-supervised encoder
+./run anomaly.run --model baseline --max-subjects 3           # quick check
 ```
 
 **model-improvement levers (compare against the plain `ae` before deploying):**
@@ -42,15 +44,19 @@ python3 -m anomaly.run --model baseline --max-subjects 3 # quick check
 - `--bottleneck DIM` — the main fix. the original AE has **no real bottleneck**: for a
   3,840-sample window the conv latent is 240×128 = 30,720 values, ~8× *larger* than the
   input. that over-complete AE can near-copy anything, so stress reconstructs almost as
-  well as calm and barely separates. `--bottleneck 64` forces a compressed latent, so the
-  model learns only the normal-pulse manifold and stress stands out. sweep 32 / 64 / 128.
+  well as calm and barely separates. a compressed latent makes the model learn only the
+  normal-pulse manifold, so stress stands out. **256 won the sweep** — 32 / 64 / 128 all
+  score lower ([RESULTS.md](RESULTS.md)).
+- `--ch-cap N` — caps the encoder's channels (128 → 32). costs a little accuracy
+  (PR-AUC 0.736 → 0.706) and buys the 4 MB that fits an ESP32-S3.
+  **`--bottleneck 256 --ch-cap 32` is the deployed model.**
 - `--denoise SIGMA` — trains on noise-corrupted calm windows (amplitude drift + baseline
   wander + jitter, clean target) so it keys on pulse *shape* and transfers better to noisy
   hardware. orthogonal to the bottleneck; can stack.
 
 `0` (default for both) reproduces the validated baseline. once a config wins on PR-AUC /
 recall@90% spec, train the deployable copy with the same flags, e.g.
-`python3 -m anomaly.export --bottleneck 64 --denoise 0.15`, then re-run `anomaly.compress`.
+`./run anomaly.export --bottleneck 256 --ch-cap 32`, then re-run `anomaly.compress`.
 
 > reality check: these should sharpen separation, but **zero-shot cross-subject**
 > recall@90% spec (~0.50) won't jump to 0.90 — the per-subject variance (PR-AUC 0.99→0.30)
@@ -64,9 +70,9 @@ baseline windows; results print per-subject and as mean ± std.
 ## live dashboard
 
 ```bash
-python3 -m anomaly.export                 # train + save the deployable model (once)
-python3 -m anomaly.serve                  # → http://localhost:8001
-python3 -m anomaly.serve --subject S17    # try a different subject
+./run anomaly.export               # train + save the deployable model (once)
+./run anomaly.serve                # → http://localhost:8001
+./run anomaly.serve --subject S17  # try a different subject
 ```
 
 streams a WESAD subject's wrist BVP, runs the saved autoencoder on a rolling
@@ -78,9 +84,10 @@ subject S5 sits low during calm and pegs the level (flagged) through the stress
 two front-ends share the one server + `/ws`:
 
 - **`/`** (alias **`/watch`**) — the team's **Pulse Watch** product UI (Zayed, `pulse/`),
-  the default view, running on this live pipeline. it auto-connects to `/ws` (falls back
-  to its built-in mock replay if the server isn't up) and carries the Cautious / Balanced
-  / Strict preset.
+  the default view, running on this live pipeline. it auto-connects to `/ws` and, if that
+  fails, **stays offline and says so** — it used to fall back to a built-in mock replay,
+  which was indistinguishable from working. carries the Cautious / Balanced / Strict
+  preset.
 - **`/dev`** — developer dashboard. scores the model's flag against the WESAD
   ground-truth label **live** (TP / FP / FN / TN tally + precision / recall), with
   the true-stress period shaded behind the anomaly-level chart. this is the answer
@@ -114,8 +121,8 @@ the model still flags on the learned pulse *shape*, not on a heart-rate threshol
 ## quick look
 
 ```bash
-python3 anomaly/wesad.py            # window counts per condition, all 15 subjects
-python3 anomaly/wesad.py S2 --win 60 --step 5
+./run anomaly/wesad.py            # window counts per condition, all 15 subjects
+./run anomaly/wesad.py S2 --win 60 --step 5
 ```
 
 (WESAD itself is ~17 GB and gitignored — see the top-level README for the layout.)

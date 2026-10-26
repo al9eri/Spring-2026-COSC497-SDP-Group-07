@@ -6,7 +6,7 @@ skeleton, and signal-quality helpers) — it's model-agnostic infrastructure.
 
 > status: this is the **earlier cardiac demo** and streams the old supervised
 > classifier. the **current live dashboard is `anomaly/serve.py`** (→
-> localhost:8001) — run `python3 -m anomaly.serve`. this `pipeline/` is kept as
+> localhost:8001) — run `./run anomaly.serve`. this `pipeline/` is kept as
 > the carried-over streaming pattern the anomaly dashboard is built on.
 
 ## what it does
@@ -28,14 +28,14 @@ only the data source changes when real hardware arrives. everything after it
 pip3 install -r baselines/requirements.txt -r pipeline/requirements.txt
 
 # (one-time, only if the dataset is present) rebuild demo_data.csv
-python3 pipeline/make_demo_data.py
+./run pipeline/make_demo_data.py
 
 # option A — terminal-only sanity check
-python3 pipeline/run_cli.py            # loops forever
-python3 pipeline/run_cli.py --once     # one 92-second pass
+./run pipeline/run_cli.py         # loops forever
+./run pipeline/run_cli.py --once  # one 92-second pass
 
 # option B — web dashboard (FastAPI + WebSocket)
-python3 pipeline/server.py
+./run pipeline/server.py
 # open http://localhost:8000 and click ▶ Start
 # from a phone on the same WiFi: http://<this-device-ip>:8000
 ```

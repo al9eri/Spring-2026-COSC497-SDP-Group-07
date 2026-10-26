@@ -61,7 +61,7 @@ skeleton in `pipeline/` carries over.
 
 **it now runs on real hardware.** an ESP32-S3 + MAX30102 streams over USB serial;
 `anomaly/device_source.py` band-passes and resamples it to the same 64 Hz the model
-expects, so `python3 -m anomaly.serve --source device` swaps the WESAD replay for a
+expects, so `./run anomaly.serve --source device` swaps the WESAD replay for a
 live finger without touching the model. the board's own display mirrors the
 dashboard's heart rate, and falls back to its own estimate when untethered.
 
@@ -176,51 +176,31 @@ built on the device path already (`anomaly/device_source.py`, `anomaly/device_ch
 
 ## quick start
 
-**use a virtualenv, on Python 3.12.** `baselines/requirements.txt` pins
-`tensorflow-cpu<2.20`, which has no wheels for 3.13 or 3.14 — on a newer
-interpreter pip simply fails to resolve tensorflow. keep the venv outside the repo
-and outside any synced folder (iCloud/OneDrive). full setup in
-[`COMMANDS-macos.md`](COMMANDS-macos.md) / [`COMMANDS-windows.md`](COMMANDS-windows.md).
+**Double-click `Pulse Control.app`** — it is already in this folder on macOS.
+On Windows: `.\run.ps1 setup`, then `launcher\build_exe.bat`, then the exe.
+One window, a button for every step: board setup, the master, stress sessions,
+the demo, reports.
 
-**no commands needed — double-click `Pulse Control.app`.** on macOS it is
-already in the folder (committed, 170 KB, opens in a second); on Windows build
-it once with `launcher\build_exe.bat`. a button for every step — board →
-hotspot, master, stress sessions, demo, reports — and **Advanced → Set up the
-virtualenv…** does the install below for you if you have not run it. same
-window, same buttons, both OSes.
+Terminal instead? `./run` needs no virtualenv and no activation
+(`.\run.ps1` on Windows):
 
 ```bash
-# install dependencies (one-time). ./run needs no venv activation, ever.
-./run setup                       # Windows: .\run.ps1 setup
-./run doctor                      # what is installed, and where
-
-# live dashboards — the int8 model ships in anomaly/saved/, so this runs without WESAD
-python3 -m anomaly.serve          # → http://localhost:8001  ( / Pulse Watch · /dev developer )
-
-# the same dashboard on the real sensor (ESP32-S3 + MAX30102 over USB)
-python3 -m anomaly.device_check           # grip coach: contact, perfusion, drift, quality
-python3 -m anomaly.serve --source device  # then hit Calibrate in the UI to set your baseline
-
-# or let the BOARDS host their dashboards over WiFi and score them all from here
-python3 -m anomaly.device_wifi --ssid MyNetwork   # once; or hard-code sketch_aug3a/secrets.h
-python3 -m anomaly.fleet                          # finds every board -> http://localhost:8002
-python3 -m anomaly.protocol run                   # an induced-stress session, then: report --plot
-
-# refit the on-device detector (writes sketch_aug3a/board_model.h; flash with PSRAM = OPI)
-python3 -m anomaly.board_export --check 300 && python3 -m anomaly.board_export
-
-# evaluate the detectors on WESAD (needs WESAD downloaded; leave-one-subject-out)
-python3 -m anomaly.run --model ae --bottleneck 256 --ch-cap 32   # baseline | ae | ssl
-
-# retrain + compress the deployable int8 model (full reference: the COMMANDS file for your OS)
-python3 -m anomaly.export --bottleneck 256 --ch-cap 32 && python3 -m anomaly.compress
+./run setup          # once: a Python 3.12 venv + every dependency
+./run anomaly.serve  # dashboard, no hardware needed  -> localhost:8001
+./run anomaly.fleet  # the real thing: every board on the LAN -> localhost:8002
+./run                # everything else
 ```
 
-see [`COMMANDS-macos.md`](COMMANDS-macos.md) or
-[`COMMANDS-windows.md`](COMMANDS-windows.md) for the full command cheat sheet —
-one per OS, same tasks and same outcomes — and
-[`HANDOFF.md`](HANDOFF.md) for the current state, the gotchas that cost real
-time, and the ranked next steps.
+Python 3.12 specifically — `tensorflow-cpu<2.20` has no wheels for 3.13 or
+3.14, and `./run setup` picks the right one. Keep the venv out of any synced
+folder (iCloud/OneDrive); a 1.7 GB venv under synced `~/Documents` made
+`import numpy` take 174 s instead of 0.2 s.
+
+| | |
+|---|---|
+| every command, per OS | [`COMMANDS-macos.md`](COMMANDS-macos.md) · [`COMMANDS-windows.md`](COMMANDS-windows.md) |
+| current state, gotchas, next steps | [`HANDOFF.md`](HANDOFF.md) |
+| results — PR-AUC, recall@90spec | [`anomaly/RESULTS.md`](anomaly/RESULTS.md) |
 
 ## data
 
@@ -285,10 +265,6 @@ run / run.ps1                        run anything without activating a venv
 COMMANDS-macos.md                    command cheat sheet — macOS
 COMMANDS-windows.md                  command cheat sheet — Windows
 Pulse Control.app                    the macOS double-click icon (committed, 170 KB)
-launcher/                            Pulse Control: one window, every command behind a button
-  pulse_control.py                   the app itself (tkinter; both platforms)
-  make_app.sh                        rebuilds "Pulse Control.app" (the wrapper)
-  build_app.sh / build_exe.bat       frozen standalone bundle / "Pulse Control.exe"
-  icon/                              the icon drawing + PulseControl.icns
+launcher/                            Pulse Control's source + its build scripts
 README.md                            this file
 ```

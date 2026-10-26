@@ -1,43 +1,92 @@
-# command cheat sheet — Windows
+# Windows — start here
 
-every command you need, copy-paste ready, from the **repo root**, in
-**PowerShell**. on a Mac? use [`COMMANDS-macos.md`](COMMANDS-macos.md) instead —
-same tasks, same outcomes, different shell.
+## Just want it running?
 
-## there is no venv to get into
+**Build it once — double-click `launcher\build_exe.bat` — then double-click
+`Pulse Control.exe`.** That is the whole thing.
 
-every command in this file is written as `python -m anomaly.fleet`. **put
-`.\run.ps1` in front of it and drop the `python -m`, and it just works** — from
-any terminal, any tab, with or without conda, no activation and no execution
-policy to argue with:
+Every command in this file is a button in that window. After that you do not
+need a terminal, a virtualenv, or any of the hundreds of lines below.
+
+Fresh clone? `build_exe.bat` needs the virtualenv to exist first, so run this
+once in PowerShell (a few minutes, about 1 GB):
 
 ```powershell
-.\run.ps1 anomaly.fleet            # == python -m anomaly.fleet
-.\run.ps1 anomaly.serve --source device
-.\run.ps1 sketch_aug3a\make_web_assets.py
-.\run.ps1                          # the list of what you can run
-.\run.ps1 doctor                   # what is installed, and where
+.\run.ps1 setup
 ```
 
-`.\run.ps1` finds the project's interpreter and runs it directly. nothing to
-activate, nothing to remember, nothing to get wrong. (the macOS twin is `./run`
-— same words, same outcomes.)
+## The five things you will actually do
 
-**if you prefer the venv, activating still works:**
+| I want to… | In the app | Or in a terminal |
+|---|---|---|
+| show the demo, no hardware | **Demo** → Start WESAD demo | `.\run.ps1 anomaly.serve` |
+| run the real thing | **Live** → Start master | `.\run.ps1 anomaly.fleet` |
+| put a board on WiFi | **Board setup** → Connect board | `.\run.ps1 anomaly.device_wifi --hotspot` |
+| record a stress session | **Stress session** → Start | `.\run.ps1 anomaly.protocol run` |
+| find out why something broke | **Advanced** → Check setup | `.\run.ps1 doctor` |
+
+`.\run.ps1` needs no virtualenv and no activation — it finds the right Python by
+itself. `.\run.ps1` with nothing after it lists everything it can do.
+
+## Making the app
+
+Two commands, once per machine:
+
+```powershell
+.\run.ps1 setup         # the virtualenv the exe needs (~1 GB)
+launcher\build_exe.bat  # writes "Pulse Control.exe" into this folder
+```
+
+Double-click the exe from then on. A plain `git pull` never needs a rebuild:
+the exe runs `launcher/pulse_control.py` from this folder, so pulling new code
+changes what the buttons do by itself. Rebuild only when the launcher itself
+changes — `build_exe.bat force` rebuilds regardless.
+
+The exe is gitignored, so everyone builds their own. No exe at all?
+`python launcher/pulse_control.py` opens the same window.
+
+**That is it. You can stop reading.**
+
+---
+
+# Reference
+
+Everything past this line is for when something breaks, or when you are
+changing the model or the firmware. Skim the headings; ignore the rest.
+
+| | |
+|---|---|
+| [0. running commands](#0-running-commands-by-hand) | `.\run.ps1`, or activating a venv |
+| [1. setup by hand](#1-setup-once-per-machine) | what the app's button does for you |
+| [2. the demo](#2-the-demo) | the master, the board, dashboards, stress sessions |
+| [3. the store](#3-the-store) | subjects, baselines, flags |
+| [4. build steps](#4-build-steps) | only when the model or data changes |
+| [5. latency](#5-detection-latency--what-to-expect) | why a flag takes 10–40 s |
+| **[6. troubleshooting](#6-troubleshooting)** | **the one worth bookmarking** |
+| [7. git](#7-git) · [8. prior work](#8-prior-work--kept-not-the-current-direction) · [9. where things live](#9-where-things-live) | |
+
+On a Mac? → [`COMMANDS-macos.md`](COMMANDS-macos.md)
+
+## 0. running commands by hand
+
+`.\run.ps1 <module>` — no activation, no execution policy to argue with:
+
+```powershell
+.\run.ps1 anomaly.fleet  # == python -m anomaly.fleet
+.\run.ps1 setup          # build the venv and install everything
+.\run.ps1 doctor         # what is installed, and where
+```
+
+prefer the venv? activate it, and every command below works as written:
 
 ```powershell
 & $HOME\.venvs\sdp07\Scripts\Activate.ps1
 ```
 
-your prompt gains a `(sdp07)` and `python` becomes the venv's, and the commands
-below then work exactly as written. note the `&`: PowerShell parses a line
-starting with `$HOME\...` as an expression, not a command, so it needs the call
-operator. and note that activation is **per terminal tab** — a new tab is back
-to the system python, which is the usual reason this "stops working".
-
-without either, you are running the system python, which has none of the
-dependencies — that is what `ModuleNotFoundError: No module named 'scipy'` (or
-`tensorflow`, or `fastapi`) means, every time. first-time setup is section 1.
+the `&` is required: PowerShell parses a line starting with `$HOME\...` as an
+expression, not a command. and activation is **per terminal tab** — a new tab
+is back to the system python, which is the usual reason it "stops working".
+`.\run.ps1` is immune to that.
 
 ---
 
@@ -70,28 +119,13 @@ dependencies — that is what `ModuleNotFoundError: No module named 'scipy'` (or
 everything under **prior work** is kept as a reference point and is *not* the
 current direction — see the pivot table in the project brief.
 
-**or skip the commands entirely: Pulse Control.** a window with a button for
-everything below — connect a board to the hotspot, start the master, run a
-stress session, the WESAD demo, reports, firmware build steps — and a log of
-what each one is doing. double-click `launcher\build_exe.bat` once to build
-`Pulse Control.exe` into the project folder (needs the venv from section 1),
-then double-click the exe. it runs the real code with your venv, so a `git pull`
-never needs a rebuild; rebuild only if `launcher/pulse_control.py` changes
-(`build_exe.bat force` rebuilds regardless). the exe is gitignored — everyone
-builds their own. don't want an exe at all? `python launcher/pulse_control.py`.
+### if the exe misbehaves
 
-**no virtualenv yet?** the window still opens, and **Advanced → Set up the
-virtualenv…** does section 1 for you (it needs Python 3.12 installed), piping
-pip's output into the log.
-
-(on macOS the equivalent icon, `Pulse Control.app`, is committed and needs no
-build step at all — see [`COMMANDS-macos.md`](COMMANDS-macos.md).)
-
-**if you remember nothing else:**
-
-```powershell
-python -m anomaly.fleet
-```
+- rebuild it: `launcher\build_exe.bat force` — see "Making the app" above
+- it needs the virtualenv to exist first; `.\run.ps1 setup` makes one
+- no exe at all? `python launcher/pulse_control.py` opens the same window
+- the macOS equivalent is committed and needs no build at all —
+  see [`COMMANDS-macos.md`](COMMANDS-macos.md)
 
 ---
 
@@ -125,7 +159,7 @@ and **tick "tcl/tk and IDLE"** in the installer — Pulse Control needs it. (the
 python.org installer includes it by default; it is only missing if someone
 un-ticked it.)
 
-- **activate once per terminal** (the block at the top of this file), then use
+- **activate once per terminal** (section 0), then use
   `python`, not `python3`. `deactivate` when done, or just close the tab.
 - **or skip activation and spell out the interpreter** —
   `& $HOME\.venvs\sdp07\Scripts\python.exe -m anomaly.fleet`. more typing, but

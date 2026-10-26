@@ -1,52 +1,109 @@
-# command cheat sheet — macOS
+# macOS — start here
 
-every command you need, copy-paste ready, from the **repo root**.
-on Windows? use [`COMMANDS-windows.md`](COMMANDS-windows.md) instead — same
-tasks, same outcomes, different shell.
+## Just want it running?
 
-## there is no venv to get into
+**Double-click `Pulse Control.app` in this folder.** That is the whole thing.
 
-every command in this file is written as `python -m anomaly.fleet`. **put
-`./run` in front of it and drop the `python -m`, and it just works** — from any
-terminal, any tab, with or without conda, no activation:
+Every command in this file is a button in that window. You do not need a
+terminal, a virtualenv, or any of the hundreds of lines below.
+
+First time on this machine? The window still opens — press
+**Advanced → Set up the virtualenv…**, wait a few minutes, done.
+
+## The five things you will actually do
+
+| I want to… | In the app | Or in a terminal |
+|---|---|---|
+| show the demo, no hardware | **Demo** → Start WESAD demo | `./run anomaly.serve` |
+| run the real thing | **Live** → Start master | `./run anomaly.fleet` |
+| put a board on WiFi | **Board setup** → Connect board | `./run anomaly.device_wifi --hotspot` |
+| record a stress session | **Stress session** → Start | `./run anomaly.protocol run` |
+| find out why something broke | **Advanced** → Check setup | `./run doctor` |
+
+`./run` needs no virtualenv and no activation — it finds the right Python by
+itself. `./run` with nothing after it lists everything it can do.
+
+## Making the app
+
+It is **already in this folder** — committed, so a fresh clone has it. Nothing
+to build.
+
+**Looking for it on github.com and not seeing an app?** You won't. Git has no
+idea what a macOS app bundle is, so the website lists it as an ordinary folder
+called `Pulse Control.app`, sorted between `pulse` and `sketch_aug3a`. It only
+becomes a double-clickable app once it is on a Mac's disk — `git clone`, or
+Code → Download ZIP, both work and both keep the executable bit the bundle
+needs.
+
+If it is missing from your copy, or you changed `launcher/pulse_control.py` or
+the icon, rebuild it in about a second:
 
 ```bash
-./run anomaly.fleet            # == python -m anomaly.fleet
-./run anomaly.serve --source device
-./run sketch_aug3a/make_web_assets.py
-./run                          # the list of what you can run
-./run doctor                   # what is installed, and where
+bash launcher/make_app.sh
 ```
 
-`./run` finds the project's interpreter and runs it directly. nothing to
-activate, nothing to remember, nothing to get wrong.
+A plain `git pull` never needs a rebuild: the app runs
+`launcher/pulse_control.py` out of the folder it sits in, so pulling new code
+changes what the buttons do by itself.
 
-**if you prefer the venv, activating still works:**
+The one case it cannot cover is a Mac where no Python has Tk 8.6 (macOS's own
+ships 8.5 from 2010, which draws an empty window). The app says so if it hits
+that; then build one that carries its own Python and Tk:
+
+```bash
+bash launcher/build_app.sh      # -> "Pulse Control (standalone).app", 29 MB
+```
+
+**That is it. You can stop reading.**
+
+---
+
+# Reference
+
+Everything past this line is for when something breaks, or when you are
+changing the model or the firmware. Skim the headings; ignore the rest.
+
+| | |
+|---|---|
+| [0. running commands](#0-running-commands-by-hand) | `./run`, or activating a venv |
+| [1. setup by hand](#1-setup-once-per-machine) | what the app's button does for you |
+| [2. the demo](#2-the-demo) | the master, the board, dashboards, stress sessions |
+| [3. the store](#3-the-store) | subjects, baselines, flags |
+| [4. build steps](#4-build-steps) | only when the model or data changes |
+| [5. latency](#5-detection-latency--what-to-expect) | why a flag takes 10–40 s |
+| **[6. troubleshooting](#6-troubleshooting)** | **the one worth bookmarking** |
+| [7. git](#7-git) · [8. prior work](#8-prior-work--kept-not-the-current-direction) · [9. where things live](#9-where-things-live) | |
+
+On Windows? → [`COMMANDS-windows.md`](COMMANDS-windows.md)
+
+## 0. running commands by hand
+
+`./run <module>` — no activation, any tab, conda or not:
+
+```bash
+./run anomaly.fleet  # == python -m anomaly.fleet
+./run setup          # build the venv and install everything
+./run doctor         # what is installed, and where
+```
+
+prefer the venv? activate it, and every command below works as written:
 
 ```bash
 source ~/.venvs/sdp07/bin/activate
 ```
 
-your prompt gains a `(sdp07)` and `python` becomes the venv's, and the commands
-below then work exactly as written. two things to know about this route:
+two things make that appear to "stop working":
 
-- it is **per terminal tab**. a new tab is back to the system python. that is
-  normal, and it is the usual reason this "stops working".
-- if your `~/.zshrc` defines `python` as an **alias or function**, zsh resolves
-  that *before* `PATH`, so activation can appear to work — right prompt, right
-  `VIRTUAL_ENV` — while `python` still runs something else. `which python` will
-  show you the function, not the truth. the honest check is:
+- it is **per terminal tab** — a new tab is back to the system python
+- a `python` **alias or function** in `~/.zshrc` is resolved before `PATH`, so
+  activation can look right (correct prompt, `VIRTUAL_ENV` set) while `python`
+  still runs something else. `which python` shows the function, not the truth:
 
   ```bash
-  python -c "import sys; print(sys.executable)"
+  python -c "import sys; print(sys.executable)"    # must be under .venvs/sdp07
   ```
 
-  it must print a path under `.venvs/sdp07`. `./run` is immune to all of this,
-  which is why it is first.
-
-without either, you are running the system python, which has none of the
-dependencies — that is what `ModuleNotFoundError: No module named 'scipy'` (or
-`tensorflow`, or `fastapi`) means, every time. first-time setup is section 1.
+`./run` is immune to both.
 
 ---
 
@@ -79,48 +136,17 @@ dependencies — that is what `ModuleNotFoundError: No module named 'scipy'` (or
 everything under **prior work** is kept as a reference point and is *not* the
 current direction — see the pivot table in the project brief.
 
-**or skip the commands entirely: double-click `Pulse Control.app`.**
+### if the app misbehaves
 
 ![the icon](launcher/icon/preview.png)
 
-it is **already in the project folder** — committed, so a fresh clone has it —
-and it opens in a second or two. a window with a button for everything below:
-connect a board, start the master, run a stress session, the WESAD demo,
-reports, firmware build steps, and a log of what each one is doing.
-
-there is nothing to build. the bundle is a 170 KB wrapper, not a frozen copy of
-the project: it finds a Python that can open a window and runs
-`launcher/pulse_control.py` out of the folder it sits in. so `git pull` changes
-what the buttons do with no rebuild, and there is nothing in it to go stale.
-
-"can open a window" means **Tk 8.6 or newer**. the app checks the version, not
-just that tkinter imports, because macOS still bundles **Tk 8.5.9** — a 2010
-build Apple deprecated years ago — and under it `ttk.PanedWindow` never lays
-out: the window opens as an empty grey rectangle and nothing reports an error.
-so macOS's own `python3` is explicitly *not* used. anaconda/miniforge, a
-python.org install, or Homebrew's `python@3.12` + `python-tk@3.12` all ship 8.6
-and any of them will do; the app picks one by itself.
-
-**no virtualenv yet?** the window still opens, and **Advanced → Set up the
-virtualenv…** does section 1 for you (it needs `brew install python@3.12`
-first), streaming pip's output into the log. so a fresh clone really is: clone,
-double-click, press one button.
-
-- keep the app **inside** the project folder — it finds the project by sitting
-  in it. drag it to the Dock to keep it handy; that keeps the original in place.
-- changed `launcher/pulse_control.py` or the icon? `bash launcher/make_app.sh`
-  rebuilds the bundle. (you do not need this for ordinary code changes.)
-- no terminal at all? `python launcher/pulse_control.py` also works.
-- a Mac where *no* Python has Tk is the one case the wrapper cannot cover —
-  `bash launcher/build_app.sh` then freezes a self-contained
-  `Pulse Control (standalone).app` with PyInstaller instead (29 MB, gitignored,
-  needs a rebuild whenever the launcher changes).
-
-**if you remember nothing else:**
-
-```bash
-python -m anomaly.fleet
-```
+- **keep it inside the project folder** — it finds the project by sitting in
+  it. drag it to the Dock for convenience; that leaves the original in place
+- it picks a Python with **Tk 8.6+** itself, deliberately skipping macOS's own
+  `python3` (Tk 8.5.9 from 2010 never lays out `ttk.PanedWindow`, so the window
+  opens empty with no error). miniforge, python.org, or Homebrew's
+  `python@3.12` + `python-tk@3.12` all qualify
+- rebuilding it is `bash launcher/make_app.sh` — see "Making the app" above
 
 ---
 
@@ -161,7 +187,7 @@ it installs into the same `python@3.12` the venv is built on, so there is
 usually nothing to re-create — just run the app again. nothing else in the
 project needs it.
 
-- **activate once per terminal** (the block at the top of this file), then use
+- **activate once per terminal** (section 0), then use
   `python`, not `python3`. `deactivate` when done, or just close the tab.
 - **or skip activation and spell out the interpreter** —
   `~/.venvs/sdp07/bin/python -m anomaly.fleet`. more typing, but immune to shell
@@ -646,7 +672,7 @@ another. the fix is to stop choosing:
 ```
 
 if you want to know *why* a terminal you thought was activated did this, see the
-top of this file: a new tab, or a `python` alias/function in `~/.zshrc`, are the
+section 0: a new tab, or a `python` alias/function in `~/.zshrc`, are the
 two usual causes, and `which python` will not reveal either.
 
 **`ModuleNotFoundError: No module named '_tkinter'`, only for Pulse Control**
