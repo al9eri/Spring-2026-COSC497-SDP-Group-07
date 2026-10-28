@@ -51,9 +51,23 @@ DEVICE_FS_NOMINAL = 100
 CONTACT_IR = 50_000         # same skin-contact threshold the sketch displays
 # the level alone is not contact: an empty Rev F sensor reads ~60k. a finger also
 # has to show a pulse -- one-second RMS of the band-passed signal, ~14 empty vs
-# 550-740 on a fingertip. on above CONTACT_AC_ON for 2 s running, off below
-# CONTACT_AC_OFF. mirrors fingerFeed() in the sketch.
+# 550-740 on a fingertip; off below CONTACT_AC_OFF. a pulse alone is not blood
+# either: the board moved just above white paper cleared that line. the red/IR
+# pulse ratio over 4 s tells them apart -- fingertip 0.38-0.73 over two
+# sessions, paper 0.69-1.13 (the low end only in a 4 s burst of hand movement),
+# a table 1.9-3.1 -- so it must also be under CONTACT_R_ON, for CONTACT_HOLD
+# seconds running, to turn on, and leaves above CONTACT_R_OFF. top of the wrist
+# read ~1.0: fingertip only. mirrors fingerFeed() in the sketch.
 CONTACT_AC_ON, CONTACT_AC_OFF = 60.0, 30.0
+CONTACT_R_ON, CONTACT_R_OFF = 0.75, 0.85
+CONTACT_HOLD = 5
+# a finger lifted and put back, or pressed too hard for a while, is the same
+# wear: within CONTACT_KEEP_S of a loss, one passing second at about the old IR
+# level (within CONTACT_DROP) brings contact back. an IR step bigger than
+# COND_JUMP restarts the band-pass instead of letting it ring for seconds; a
+# step bigger than CONTACT_DROP from the finger's level is the finger leaving.
+CONTACT_KEEP_S, CONTACT_DROP = 30.0, 0.25
+COND_JUMP = 0.08
 GAP_MS = 500.0              # timestamp jump this large = discontinuity, re-prime
 BUFFER_SEC = 10             # bound the hand-off queue; drop oldest past this
 
@@ -133,7 +147,14 @@ class DeviceSource:
         self.contact = False
         self.pulse = False
         self.ac_rms = 0.0
-        self._ac_sum, self._ac_n, self._ac_hits = 0.0, 0, 0
+        self.ratio = 0.0                 # red/IR pulse ratio over the last 4 s
+        # per second: sum of IR AC^2, red AC^2, IR level, red level
+        self._ac_sum, self._ac_n, self._ac_hits = [0.0, 0.0, 0.0, 0.0], 0, 0
+        self._ac_blocks = deque(maxlen=4)
+        self._zi_r = None
+        self._lvl = 0.0                  # fast IR level, for jumps
+        self._flevel = 0.0               # IR level while on, ~2 s average
+        self._lost_at = None             # when contact was last lost
         self.ir_dc = 0.0
         self.red_dc = 0.0
         self.device_bpm = None
@@ -300,30 +321,75 @@ class DeviceSource:
         self._t_grid = None
         self._zi = None
 
-    def _prime_filter(self, dc: float):
-        """start the filter in steady state for a constant input at `dc`.
+    def _prime_filter(self, dc: float, red_dc: float):
+        """start the filters in steady state for a constant input at `dc`.
 
         without this the 0.7 Hz high-pass sees a step from 0 to ~90,000 counts on
         the first sample and rings for several seconds — long enough to swamp the
-        pulse and poison the first inference window.
+        pulse and poison the first inference window. red runs through the same
+        band-pass, for the contact check's blood ratio only.
         """
         self._zi = self._sos_zi * dc
+        self._zi_r = self._sos_zi * red_dc
+        self._lvl = dc
 
-    def _judge_pulse(self, y):
-        """once a second of conditioned signal: is there a pulse in it at all?"""
-        for v in y:
-            self._ac_sum += v * v
-            self._ac_n += 1
-            if self._ac_n < self.fs:
-                continue
-            self.ac_rms = (self._ac_sum / self._ac_n) ** 0.5
-            self._ac_sum, self._ac_n = 0.0, 0
-            if self.pulse:
-                self.pulse = self.ac_rms >= CONTACT_AC_OFF
-            else:
-                self._ac_hits = self._ac_hits + 1 if self.ac_rms > CONTACT_AC_ON else 0
-                if self._ac_hits >= 2:
-                    self.pulse, self._ac_hits = True, 0
+    @staticmethod
+    def _ratio(s):
+        return ((s[1] ** 0.5 / s[3]) / (s[0] ** 0.5 / s[2])
+                if s[0] > 0 and s[2] > 0 and s[3] > 0 else 9.99)
+
+    def _drop(self):
+        self.pulse, self._ac_hits, self._lost_at = False, 0, time.monotonic()
+
+    def _jump(self, ir):
+        """the IR level just jumped and the filters restarted. a finger leaving
+        moves it by tens of percent: contact goes at once. either way the second
+        being judged starts over from here."""
+        if self.pulse and abs(ir - self._flevel) > CONTACT_DROP * self._flevel:
+            self._drop()
+        self._ac_sum, self._ac_n = [0.0, 0.0, 0.0, 0.0], 0
+
+    def _acquire(self, level):
+        self.pulse, self._ac_hits, self._flevel = True, 0, level
+        last = self._ac_blocks[-1]
+        self._ac_blocks.clear()               # the ratio restarts from this second
+        self._ac_blocks.append(last)
+
+    def _judge_pulse(self, y, yr, ir, red):
+        """one conditioned sample in; once a second, is there a blood pulse?"""
+        if self.pulse:
+            self._flevel += (ir - self._flevel) / 128.0
+        s = self._ac_sum
+        s[0] += y * y
+        s[1] += yr * yr
+        s[2] += ir
+        s[3] += red
+        self._ac_n += 1
+        if self._ac_n < self.fs:
+            return
+        self.ac_rms = (s[0] / self._ac_n) ** 0.5
+        level = s[2] / self._ac_n
+        r1 = self._ratio(s)
+        self._ac_blocks.append(tuple(s))
+        self._ac_sum, self._ac_n = [0.0, 0.0, 0.0, 0.0], 0
+        self.ratio = self._ratio(np.sum(self._ac_blocks, axis=0))
+        if self.pulse:
+            if self.ac_rms < CONTACT_AC_OFF or self.ratio > CONTACT_R_OFF:
+                self._drop()
+            return
+        back = (self._lost_at is not None
+                and time.monotonic() - self._lost_at < CONTACT_KEEP_S
+                and abs(level - self._flevel) < CONTACT_DROP * self._flevel)
+        if back and self.ac_rms > CONTACT_AC_ON and r1 < CONTACT_R_ON:
+            self._acquire(level)
+            return
+        blood = self.ac_rms > CONTACT_AC_ON and self.ratio < CONTACT_R_ON
+        self._ac_hits = self._ac_hits + 1 if blood else 0
+        if self._ac_hits >= CONTACT_HOLD:
+            self._acquire(level)
+            return
+        if self.ac_rms <= CONTACT_AC_ON:
+            self._ac_blocks.clear()           # pool only the seconds with a pulse
 
     def _on_sample(self, t_ms: float, ir: float, red: float):
         self.raw_count += 1
@@ -341,7 +407,7 @@ class DeviceSource:
                 or t_ms - self._t_prev > GAP_MS):
             self._t_prev, self._ir_prev, self._red_prev = t_ms, ir, red
             self._t_grid = t_ms
-            self._prime_filter(ir)
+            self._prime_filter(ir, red)
             return
 
         if t_ms == self._t_prev:                 # duplicate stamp — nothing to span
@@ -350,10 +416,11 @@ class DeviceSource:
 
         # walk the 64 Hz grid across the interval this raw sample just closed
         span = t_ms - self._t_prev
-        vals = []
+        vals, rvals = [], []
         while self._t_grid <= t_ms:
             frac = (self._t_grid - self._t_prev) / span
             vals.append(self._ir_prev + frac * (ir - self._ir_prev))
+            rvals.append(self._red_prev + frac * (red - self._red_prev))
             self._t_grid += self._step_ms
 
         self._t_prev, self._ir_prev, self._red_prev = t_ms, ir, red
@@ -361,9 +428,21 @@ class DeviceSource:
             return
 
         if self._zi is None:
-            self._prime_filter(vals[0])
-        y, self._zi = sosfilt(self._sos, np.asarray(vals, dtype=np.float64), zi=self._zi)
-        self._judge_pulse(y)
+            self._prime_filter(vals[0], rvals[0])
+        y = np.empty(len(vals))
+        for k, (v, rv) in enumerate(zip(vals, rvals)):
+            # a step bigger than COND_JUMP of the fast level -- a finger landing,
+            # leaving, pressed or let go -- restarts the filters at the new level
+            # instead of letting the high-pass ring on it for seconds
+            if abs(v - self._lvl) > COND_JUMP * self._lvl:
+                self._prime_filter(v, rv)
+                self._jump(v)
+            else:
+                self._lvl += (v - self._lvl) * 0.1
+            yk, self._zi = sosfilt(self._sos, [v], zi=self._zi)
+            yrk, self._zi_r = sosfilt(self._sos, [rv], zi=self._zi_r)
+            y[k] = yk[0]
+            self._judge_pulse(yk[0], yrk[0], v, rv)
         if self.invert:
             y = -y
 

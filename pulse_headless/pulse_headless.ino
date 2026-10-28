@@ -226,22 +226,71 @@ uint32_t irDcDisplay = 0;             // slow IR average, for the no-finger chec
 // the 50,000 the old rig used, so the board claimed a finger with nothing on it,
 // warmed up, and printed a heart rate read off noise. What an empty sensor cannot
 // fake is a pulse: the conditioned signal's one-second RMS was ~14 counts empty
-// and 550-740 with a fingertip on (measured 2026-10-28). So both must hold -- the
-// level, and a pulse. The pulse is judged once a second in fingerFeed(); the gap
-// between the on and off lines keeps a weak beat from flickering it, and two
-// loud seconds in a row are needed to turn it on, so a knock on an empty board
-// does not.
+// and 550-740 with a fingertip on (measured 2026-10-28).
+//
+// A pulse alone is not enough either: the board moved in a hand with the sensor
+// just above a surface swings the light too, and over white paper that cleared
+// the RMS line. What tells blood apart is the red/IR pulse ratio R (the number
+// SpO2 is computed from): arterial blood at a fingertip gives R near 0.5, while
+// motion moves red and IR together, R near 1 or above. Over the last 4 s,
+// measured 2026-10-28: fingertip 0.38-0.60 one session and 0.64-0.73 the next,
+// white paper held over 0.69-1.13 (0.69-0.72 only in a 4 s burst of hand
+// movement), a dark table held over 1.9-3.1. Top of the wrist read ~1.0, so
+// this is a FINGERTIP rule -- the wrist fails it.
+//
+// So all three must hold: the level, a pulse, and a blood ratio. Pulse and
+// ratio are judged once a second in fingerFeed(). The finger and paper ranges
+// touch, so time does the rest: FINGER_HOLD passing seconds in a row turn it
+// on, longer than the paper burst lasted, and the gap between the on and off
+// lines keeps a weak beat from flickering it. Replayed on every recording,
+// 0.75 / 5 s caught both finger sessions and none of paper, table or wrist.
 #define FINGER_DC_MIN   50000          // IR level below this: nothing on the window
 #define FINGER_AC_ON    60.0f          // one-second RMS to call a pulse present...
 #define FINGER_AC_OFF   30.0f          // ...and to call it gone again
+#define FINGER_R_ON     0.75f          // 4 s red/IR pulse ratio to call it blood...
+#define FINGER_R_OFF    0.85f          // ...and to call it not blood any more
+#define FINGER_HOLD     5              // passing seconds in a row to turn it on
+#define FINGER_R_BLOCKS 4              // seconds the ratio is pooled over
 volatile bool fingerPulse = false;
 volatile float fingerAcRms = 0.0f;     // the last full second, for /health
-float fingerAcSum = 0.0f;
+volatile float fingerRatio = 0.0f;     // the last 4 s red/IR pulse ratio, for /health
+// per second: sum of IR AC^2, red AC^2, IR level, red level
+float fingerSum[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float fingerBlk[FINGER_R_BLOCKS][4];
+uint8_t fingerBlkN = 0, fingerBlkI = 0;
 uint16_t fingerAcN = 0;
-uint8_t fingerAcHits = 0;              // loud seconds in a row, while off
+uint8_t fingerAcHits = 0;              // passing seconds in a row, while off
+
+// A finger that lifts and comes straight back, or is pressed too hard for a
+// while, is the same wear. Within FINGER_KEEP_MS of losing it, one passing
+// second at about the old IR level brings contact back (the 5 s hold is for a
+// stranger, not for a finger we just had), and the window it was filling is
+// kept rather than started over. Replayed on a real lift-and-return
+// (2026-10-28): contact back 1 s after the finger, against 10 s before.
+#define FINGER_KEEP_MS  30000          // a loss shorter than this is the same wear
+#define FINGER_DROP     0.25f          // IR level moving this fraction = finger left
+float fingerLevel = 0.0f;              // IR level while on, ~2 s average
+uint32_t fingerLostMs = 0;             // when contact was last lost; 0 = never had it
 
 bool fingerDetected() {
   return fingerPulse && irDcDisplay > FINGER_DC_MIN;
+}
+
+void fingerDrop() {
+  fingerPulse = false;
+  fingerAcHits = 0;
+  fingerLostMs = millis();
+  if (fingerLostMs == 0) fingerLostMs = 1;
+}
+
+// The IR level just jumped (condFeed restarted its filter). A finger leaving
+// moves it by tens of percent, so contact goes at once, before a single sample
+// of the jump is judged as pulse; either way the second being judged starts
+// over from here.
+void fingerJump(float ir) {
+  if (fingerPulse && fabsf(ir - fingerLevel) > FINGER_DROP * fingerLevel) fingerDrop();
+  for (int k = 0; k < 4; k++) fingerSum[k] = 0.0f;
+  fingerAcN = 0;
 }
 // Big enough for "W,<ssid>,<password>": an SSID is up to 32 chars and a WPA2
 // passphrase up to 63, so the old 16-byte buffer could never carry credentials.
@@ -588,20 +637,38 @@ volatile uint32_t bdHolds = 0;               // windows refused for movement
 // older seconds -- which is what a score frozen at one value looks like.
 volatile int32_t bdDropped = 0;
 
+// The newest 2 s are held back before they join the window. Contact is only
+// lost once the jump has happened, so the seconds just before it are the ones
+// already going wrong; dropping them leaves the window ending on clean signal.
+#define BD_PEND (2 * BD_FS)
+float bdPend[BD_PEND];
+uint16_t bdPendN = 0, bdPendI = 0;
+
 // Called for every conditioned sample, from condFeed(). Mirrors the master:
-// samples count only with a finger on, and a lift longer than 3 s ends the
-// wear -- the window goes, the wearer's calm reference stays.
+// samples count only with a finger on. A loss shorter than FINGER_KEEP_MS
+// keeps the window -- the samples after it continue the ones before it -- and
+// only a longer one ends the wear: the window goes, the wearer's calm
+// reference stays.
 void bdFeed(float y) {
   if (!bdReady) return;
   uint32_t now = millis();
   if (fingerDetected()) {
-    bdRing[bdTotal % BD_RING] = y;
-    __sync_synchronize();                    // the sample before the count
-    bdTotal = bdTotal + 1;
+    if (bdPendN == BD_PEND) {                // the oldest held sample is 2 s old
+      bdRing[bdTotal % BD_RING] = bdPend[bdPendI];
+      __sync_synchronize();                  // the sample before the count
+      bdTotal = bdTotal + 1;
+    } else {
+      bdPendN++;
+    }
+    bdPend[bdPendI] = y;
+    bdPendI = (bdPendI + 1) % BD_PEND;
     bdLastContact = now;
-  } else if (bdLastContact != 0 && now - bdLastContact > 3000 && bdFrom != bdTotal) {
-    bdFrom = bdTotal;
-    bdLostReq = true;
+  } else {
+    bdPendN = 0;                             // the seconds before a loss never count
+    if (bdLastContact != 0 && now - bdLastContact > FINGER_KEEP_MS && bdFrom != bdTotal) {
+      bdFrom = bdTotal;
+      bdLostReq = true;
+    }
   }
 }
 
@@ -622,7 +689,9 @@ void bdTick() {
   uint32_t T = bdTotal, F = bdFrom;
   uint32_t have = T - F;
   if (have < (uint32_t)BD_WIN) {
-    bdWait = (int32_t)((BD_WIN - have + BD_FS - 1) / BD_FS);
+    uint32_t soon = have + bdPendN;          // the held-back 2 s count for the wait
+    bdWait = soon >= (uint32_t)BD_WIN ? 1
+           : (int32_t)((BD_WIN - soon + BD_FS - 1) / BD_FS);
     bdStateId = BD_ST_WARM;
     bdTickMs = t0;
     return;
@@ -779,6 +848,16 @@ bool  condPrimed = false;
 float condIrDc = 0.0f;                 // slow DC, alpha 0.04 as on the host
 float condTPrev = -1.0f;               // device ms of the previous raw sample
 float condIrPrev = 0.0f;
+float condZr[SOS_SECTIONS][2];         // the same band-pass, run on red, for the
+float condRedPrev = 0.0f;              // finger check's blood ratio only
+// Fast IR level (~0.15 s). A step bigger than COND_JUMP of it -- a finger
+// landing, leaving, pressed or let go -- restarts the filter at the new level,
+// as a stream gap does. Left alone, the 0.7 Hz high-pass rings on such a step
+// for seconds at thousands of counts: a finger put back read ac=23,000, kept
+// the blood ratio near 1 and contact off for 10 s. A heartbeat moves the level
+// by about 1%, far below the line.
+#define COND_JUMP 0.08f
+float condLvl = 0.0f;
 float condTGrid = 0.0f;                // next 64 Hz grid point, in device ms
 
 float condBuf[COND_CAP];
@@ -798,20 +877,26 @@ uint32_t wsSkipped = 0;                // diagnostics: frames dropped for backpr
 #define WS_PERIOD_MS    125
 #define WS_MAX_SAMPLES  20
 
-void condPrime(float dc) {
+void condPrimeZ(float z[][2], float dc) {
   for (int i = 0; i < SOS_SECTIONS; i++) {
-    condZ[i][0] = SOS_ZI[i][0] * dc;
-    condZ[i][1] = SOS_ZI[i][1] * dc;
+    z[i][0] = SOS_ZI[i][0] * dc;
+    z[i][1] = SOS_ZI[i][1] * dc;
   }
+}
+
+void condPrime(float dc, float redDc) {
+  condPrimeZ(condZ, dc);
+  condPrimeZ(condZr, redDc);
+  condLvl = dc;
   condPrimed = true;
 }
 
-float condFilter(float x) {
+float condFilter(float z[][2], float x) {
   float v = x;
   for (int i = 0; i < SOS_SECTIONS; i++) {
-    float y = SOS[i][0] * v + condZ[i][0];
-    condZ[i][0] = SOS[i][1] * v - SOS[i][4] * y + condZ[i][1];
-    condZ[i][1] = SOS[i][2] * v - SOS[i][5] * y;
+    float y = SOS[i][0] * v + z[i][0];
+    z[i][0] = SOS[i][1] * v - SOS[i][4] * y + z[i][1];
+    z[i][1] = SOS[i][2] * v - SOS[i][5] * y;
     v = y;
   }
   return v;
@@ -834,41 +919,87 @@ void condReset() {
   hrReset();                          // the signal is discontinuous now
 }
 
-// Called for every conditioned sample; settles fingerPulse once a second.
-void fingerFeed(float y) {
-  fingerAcSum += y * y;
+// Called for every conditioned sample (IR and red, filtered and raw); settles
+// fingerPulse once a second.
+void fingerFeed(float yIr, float yRed, float ir, float red) {
+  if (fingerPulse) fingerLevel += (ir - fingerLevel) * (1.0f / 128.0f);
+  fingerSum[0] += yIr * yIr;
+  fingerSum[1] += yRed * yRed;
+  fingerSum[2] += ir;
+  fingerSum[3] += red;
   if (++fingerAcN < COND_FS) return;
-  float rms = sqrtf(fingerAcSum / (float)fingerAcN);
-  fingerAcSum = 0.0f;
-  fingerAcN = 0;
-  fingerAcRms = rms;
-  if (fingerPulse) {
-    if (rms < FINGER_AC_OFF) fingerPulse = false;
-  } else {
-    fingerAcHits = (rms > FINGER_AC_ON) ? fingerAcHits + 1 : 0;
-    if (fingerAcHits >= 2) {
-      fingerPulse = true;
-      fingerAcHits = 0;
-    }
+  float rms = sqrtf(fingerSum[0] / (float)fingerAcN);
+  for (int k = 0; k < 4; k++) {
+    fingerBlk[fingerBlkI][k] = fingerSum[k];
+    fingerSum[k] = 0.0f;
   }
+  fingerBlkI = (fingerBlkI + 1) % FINGER_R_BLOCKS;
+  if (fingerBlkN < FINGER_R_BLOCKS) fingerBlkN++;
+  fingerAcN = 0;
+
+  // R = (red AC / red DC) / (IR AC / IR DC), pooled over the last 4 s, and
+  // for this second alone
+  float p[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  for (int j = 0; j < fingerBlkN; j++) {
+    int b = (fingerBlkI + FINGER_R_BLOCKS - 1 - j) % FINGER_R_BLOCKS;
+    for (int k = 0; k < 4; k++) p[k] += fingerBlk[b][k];
+  }
+  float r = (p[0] > 0.0f && p[2] > 0.0f && p[3] > 0.0f)
+          ? (sqrtf(p[1]) / p[3]) / (sqrtf(p[0]) / p[2]) : 9.99f;
+  float *q = fingerBlk[(fingerBlkI + FINGER_R_BLOCKS - 1) % FINGER_R_BLOCKS];
+  float r1 = (q[0] > 0.0f && q[2] > 0.0f && q[3] > 0.0f)
+           ? (sqrtf(q[1]) / q[3]) / (sqrtf(q[0]) / q[2]) : 9.99f;
+  float level = q[2] / (float)COND_FS;
+  fingerAcRms = rms;
+  fingerRatio = r;
+
+  if (fingerPulse) {
+    if (rms < FINGER_AC_OFF || r > FINGER_R_OFF) fingerDrop();
+    return;
+  }
+  bool back = fingerLostMs != 0 && millis() - fingerLostMs < FINGER_KEEP_MS &&
+              fabsf(level - fingerLevel) < FINGER_DROP * fingerLevel;
+  if (back && rms > FINGER_AC_ON && r1 < FINGER_R_ON) {
+    fingerAcquire(level);
+    return;
+  }
+  bool blood = (rms > FINGER_AC_ON && r < FINGER_R_ON);
+  fingerAcHits = blood ? fingerAcHits + 1 : 0;
+  if (fingerAcHits >= FINGER_HOLD) {
+    fingerAcquire(level);
+    return;
+  }
+  // a second with no pulse in it: the ratio pools only the seconds after it,
+  // so an empty sensor before a finger lands does not drag the ratio out
+  if (rms <= FINGER_AC_ON) fingerBlkN = 0;
+}
+
+void fingerAcquire(float level) {
+  fingerPulse = true;
+  fingerAcHits = 0;
+  fingerLevel = level;
+  fingerBlkN = 1;                     // the ratio restarts from this second
 }
 
 // One raw sample in; zero or more conditioned 64 Hz samples out.
-void condFeed(uint32_t tMs, uint32_t ir) {
+void condFeed(uint32_t tMs, uint32_t ir, uint32_t red) {
   float t = (float)tMs;
   float x = (float)ir;
+  float xr = (float)red;
 
   condIrDc = (condIrDc == 0.0f) ? x : (0.96f * condIrDc + 0.04f * x);
 
   if (condTPrev < 0.0f || t < condTPrev || (t - condTPrev) > COND_GAP_MS) {
     condTPrev = t;                        // first sample, or the stream jumped
     condIrPrev = x;
+    condRedPrev = xr;
     condTGrid = t;
-    condPrime(x);
+    condPrime(x, xr);
     return;
   }
   if (t == condTPrev) {
     condIrPrev = x;                       // duplicate stamp, nothing to span
+    condRedPrev = xr;
     return;
   }
 
@@ -877,18 +1008,27 @@ void condFeed(uint32_t tMs, uint32_t ir) {
   while (condTGrid <= t) {
     float frac = (condTGrid - condTPrev) / span;
     float interp = condIrPrev + frac * (x - condIrPrev);
+    float interpR = condRedPrev + frac * (xr - condRedPrev);
     if (!condPrimed) {
-      condPrime(interp);
+      condPrime(interp, interpR);
     }
-    float y = condFilter(interp);
+    if (fabsf(interp - condLvl) > COND_JUMP * condLvl) {
+      condPrime(interp, interpR);
+      fingerJump(interp);
+    } else {
+      condLvl += (interp - condLvl) * 0.1f;
+    }
+    float y = condFilter(condZ, interp);
+    float yr = condFilter(condZr, interpR);
     condPush(y);
-    fingerFeed(y);                    // is there a pulse in it at all?
+    fingerFeed(y, yr, interp, interpR);   // is there a blood pulse in it at all?
     hrPush(y);                        // the HR algorithm runs on the same signal
     bdFeed(y);                        // and so does the on-device detector
     condTGrid += step;
   }
   condTPrev = t;
   condIrPrev = x;
+  condRedPrev = xr;
 }
 
 // =====================================================
@@ -1246,6 +1386,7 @@ void webBegin() {
                   " heap=" + String(ESP.getFreeHeap()) +
                   " ir=" + String(irDcDisplay) +
                   " ac=" + String(fingerAcRms, 1) +
+                  " r=" + String(fingerRatio, 2) +
                   " finger=" + String(fingerDetected() ? 1 : 0) +
                   " bpm=" + String(bpmValid ? bpmLive : 0) +
                   // conditioning + websocket diagnostics: which link is dead?
@@ -1261,6 +1402,7 @@ void webBegin() {
                   // the on-device detector: state, raw score, level, cost, and
                   // whether its self-test passed at boot (detail on serial)
                   " det=" + String(BD_ST_NAME[bdStateId]) +
+                  " dwin=" + String((bdTotal - bdFrom) / BD_FS) +
                   " dsc=" + String(bdScore, 3) +
                   " dlv=" + String(bdLevel < 0 ? -1 : (int)(bdLevel * 100.0f + 0.5f)) +
                   " dms=" + String(bdMs) +
@@ -1907,7 +2049,7 @@ void readInitialSamples() {
       pollHostSerial();
       s1Poll();
       irDcDisplay = (irDcDisplay == 0) ? ir : (irDcDisplay * 15 + ir) / 16;
-      condFeed(timestamp, ir);
+      condFeed(timestamp, ir, red);
       if ((statSamples & 0xFF) == 0 || wifiPend != 0) wifiPoll();
       if (millis() - hrLastCompute > 1000) {   // once a second, like the host
         hrLastCompute = millis();
@@ -2164,7 +2306,7 @@ void loop() {
       pollHostSerial();
       s1Poll();
       irDcDisplay = (irDcDisplay == 0) ? ir : (irDcDisplay * 15 + ir) / 16;
-      condFeed(timestamp, ir);
+      condFeed(timestamp, ir, red);
       if ((statSamples & 0xFF) == 0 || wifiPend != 0) wifiPoll();
       if (millis() - hrLastCompute > 1000) {   // once a second, like the host
         hrLastCompute = millis();

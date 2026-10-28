@@ -71,6 +71,15 @@ API_VERSION = 13
 # every time somebody scratches their nose would shred the history into confetti.
 SESSION_IDLE_S = 120.0
 
+# a finger that lifts and comes straight back, or is pressed too hard for a
+# while, is the same wear: a loss shorter than KEEP_S keeps the window and the
+# samples after it continue the ones before it. the newest PEND samples are held
+# back -- contact is only lost once the jump has happened, so the seconds just
+# before it are already going wrong, and they are dropped rather than scored.
+# the board does the same for its own detector (FINGER_KEEP_MS, BD_PEND).
+KEEP_S = 30.0
+PEND = 2 * FS
+
 # --- self-referencing scale -------------------------------------------------
 # A calibration used to store WHERE this person's calm sat. That number moves
 # the moment the sensor is re-placed: measured on 27 subjects recorded at two
@@ -374,6 +383,7 @@ class Device:
         self.det = det                    # LiveAnomalyDetector, thresholds swapped per subject
         self.db = db
         self.buf: deque = deque(maxlen=HIST)   # raw history, longer than a window
+        self.pend: deque = deque()        # the newest 2 s, not yet in buf
         self.ema = None
         self.level = None
         self.flag = False
@@ -895,7 +905,9 @@ class Fleet:
                         if dev.contact:
                             dev.lost_since = None
                             for v in (m.get("bvp") or []):
-                                dev.buf.append(float(v))
+                                dev.pend.append(float(v))
+                            while len(dev.pend) > PEND:
+                                dev.buf.append(dev.pend.popleft())
                             if dev.calib:
                                 before = len(dev.calib.scores)
                                 dev.calib.offer(dev)
@@ -906,12 +918,14 @@ class Fleet:
                                         st["windows"], st["target"], st["can_commit"])
                         else:
                             # a momentary lift should not cost a whole minute of
-                            # refilling. hold the buffer briefly; only a real
+                            # refilling. keep the buffer for KEEP_S; only a real
                             # removal discards it. no samples are appended either
-                            # way, so noise still never enters a window.
+                            # way, and the held-back seconds that carry the jump
+                            # are dropped, so noise still never enters a window.
+                            dev.pend.clear()
                             if dev.lost_since is None:
                                 dev.lost_since = now_c
-                            if now_c - dev.lost_since > 3.0:
+                            if now_c - dev.lost_since > KEEP_S:
                                 dev.buf.clear()
                                 dev.level, dev.flag, dev.ema = None, False, None
                             # NOTE: no `continue`. this used to skip straight past
@@ -946,7 +960,8 @@ class Fleet:
                             dev.quality_note = "no subject assigned"
                         elif len(dev.buf) < WIN:
                             state = "warm"
-                            wait = int(np.ceil((WIN - len(dev.buf)) / float(FS)))
+                            soon = len(dev.buf) + len(dev.pend)   # held back, not lost
+                            wait = max(1, int(np.ceil((WIN - soon) / float(FS))))
                             dev.quality_note = "warming up — %d s left" % wait
                         else:
                             sc, q, why = dev.score_window()
