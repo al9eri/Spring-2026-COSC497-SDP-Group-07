@@ -4,7 +4,7 @@
 #     .\run.ps1 setup                create ~\.venvs\sdp07 and install everything
 #     .\run.ps1 anomaly.fleet        same as: python -m anomaly.fleet
 #     .\run.ps1 anomaly.serve --source device
-#     .\run.ps1 sketch_aug3a\make_web_assets.py
+#     .\run.ps1 pulse_display\make_web_assets.py
 #
 # There is no venv to "get into". This finds the project's interpreter and runs
 # it directly, so it works from any shell and any tab, with or without conda,
@@ -81,7 +81,7 @@ function Show-Usage {
   Write-Host "    .\run.ps1 anomaly.device_check           is the finger on properly?"
   Write-Host "    .\run.ps1 anomaly.device_source --list-ports"
   Write-Host "    .\run.ps1 anomaly.device_wifi --status"
-  Write-Host "    .\run.ps1 sketch_aug3a\make_web_assets.py"
+  Write-Host "    .\run.ps1 pulse_display\make_web_assets.py"
   Write-Host ""
   Write-Host "  the experiment"
   Write-Host "    .\run.ps1 anomaly.protocol run           induced-stress session (master first)"

@@ -118,8 +118,21 @@ Step-by-step, per OS: [`COMMANDS-macos.md`](COMMANDS-macos.md) ·
 **Arduino libraries:** ESP Async WebServer and Async TCP, both **by ESP32Async**
 (older forks do not build against ESP32 core 3.x).
 
+**Two firmware builds.** `pulse_display/` is the board with a TFT;
+`pulse_headless/` is the same firmware for a board with no screen — the Rev F
+wearable, which puts the MAX30102 on **GPIO8/GPIO9** (not 17/18) and brings its
+only display-capable interface out to an unpopulated 24-pin FPC. They are
+separate sketches on purpose: **a non-display fix to one is not a fix to the
+other.** `make_web_assets.py` and `anomaly.board_export` both write their
+generated headers into every sketch folder, so those cannot drift.
+
 **Board settings:** ESP32S3 Dev Module, `USB CDC On Boot: Enabled`, and a
 partition scheme with a large enough app partition.
+
+For the Rev F wearable the module is an **ESP32-S3-WROOM-1-N8R8** (marking
+`MCN8R8`), not the N16R8 the rest of these notes assume: set `Flash Size: 8MB
+(64Mb)` with `Partition Scheme: 8M with spiffs (3MB APP/1.5MB SPIFFS)` or
+`default_8MB`, and keep `PSRAM: OPI PSRAM` — the detector still needs it.
 
 ---
 
@@ -135,29 +148,46 @@ Still live — these will bite you:
 2. **Power-cycle, don't reset.** A reset mid-I2C leaves the MAX30102 holding SDA
    low; RESET does not re-power the peripherals. A white TFT after a flash is
    this.
-3. **The board resets when the serial port is opened**, so a host tool must wait
+3. **A board can report "no route to host" while being perfectly healthy.**
+   Measured on the Rev F board over a phone hotspot: 0% packet loss across 20
+   pings, but a round trip swinging between **7 ms and 211 ms** (stddev 44 ms).
+   A single-shot HTTP probe lands in one of those stalls often enough to call a
+   live board dead — which is what the roster did after its own subnet sweep
+   had just found it. `http_text()` in Pulse Control and `probe()` for a known
+   address now retry three times with backoff; the 254-address sweep still uses
+   one try, because an empty address never answers however often it is asked.
+
+   **Do NOT "fix" this by raising the radio.** `WiFi.setTxPower(WIFI_POWER_11dBm)`
+   is deliberate — full transmit power sags the 3.3 V rail hard enough to take
+   the MAX30102 down with it, and that is far likelier on the Rev F board's
+   150 mAh cell than on USB. At `rssi` of -31 to -41 dBm there is already far
+   more link margin than the -59 dBm that setting was chosen against, and
+   `/health` reports `rec=0` — the sensor has never once had to be
+   re-initialised. The weak link is the path, not the transmitter.
+
+4. **The board resets when the serial port is opened**, so a host tool must wait
    for `# setup done` before sending commands. `device_wifi` learned this the
    hard way: it used to report the *old* network's IP as if it were the new one.
-4. **HR below ~55 bpm reads double** — the dicrotic notch clears the prominence
+5. **HR below ~55 bpm reads double** — the dicrotic notch clears the prominence
    bar. Inherited from the host algorithm, so the board and the dashboard agree
    with each other and are both wrong.
-5. **One process owns the serial port**, and **`make_web_assets.py` must be
+6. **One process owns the serial port**, and **`make_web_assets.py` must be
    re-run after any dashboard edit** or the board serves the old page from
    flash. Both are in COMMANDS §6; they are listed here only because they
    account for most "it's broken" messages.
 
 Already fixed — do not re-diagnose these:
 
-6. **The sample loop crawling** looked exactly like the sensor dying. It was
+7. **The sample loop crawling** looked exactly like the sensor dying. It was
    `Serial.write()` blocking until the CDC timeout once the buffer filled, with
    USB plugged in and nothing reading it. Fixed with `setTxTimeoutMs(0)` and an
    `if (!Serial) return` guard. If the loop ever crawls again, check `/health`
    first: `cond` frozen + `ticks` barely moving is the signature.
-7. **Pulse Watch used to fall back to a MOCK replay** when the websocket did not
+8. **Pulse Watch used to fall back to a MOCK replay** when the websocket did not
    open within 3 s, fabricated events and all — indistinguishable from working.
    It now stays **offline** and says so; the demo is a choice you make, never a
    fallback. Keep it that way.
-8. **Weak WiFi showed up as lag, then a hang**: `ws.textAll()` only queues, and
+9. **Weak WiFi showed up as lag, then a hang**: `ws.textAll()` only queues, and
    queueing faster than the link drains kills the heap. The firmware now skips
    frames when `availableForWriteAll()` is false. Below about −80 dBm, move the
    board closer anyway.

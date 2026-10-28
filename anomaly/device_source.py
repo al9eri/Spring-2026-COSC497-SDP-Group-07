@@ -1,6 +1,6 @@
 """real-sensor BVP source — the live counterpart to `wesad_replay.BVPReplay`.
 
-reads the ESP32-S3 + MAX30102 stream produced by `sketch_aug3a/sketch_aug3a.ino`
+reads the ESP32-S3 + MAX30102 stream produced by `pulse_display/pulse_display.ino`
 and turns it into the same thing the dashboard already consumes: one
 `(bvp_value, label)` per `next()`, at `anomaly.wesad.FS` (64 Hz).
 

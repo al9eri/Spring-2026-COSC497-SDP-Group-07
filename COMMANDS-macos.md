@@ -30,7 +30,7 @@ to build.
 
 **Looking for it on github.com and not seeing an app?** You won't. Git has no
 idea what a macOS app bundle is, so the website lists it as an ordinary folder
-called `Pulse Control.app`, sorted between `pulse` and `sketch_aug3a`. It only
+called `Pulse Control.app`, sorted between `pulse` and `pulse_display`. It only
 becomes a double-clickable app once it is on a Mac's disk — `git clone`, or
 Code → Download ZIP, both work and both keep the executable bit the bundle
 needs.
@@ -112,7 +112,7 @@ two things make that appear to "stop working":
 | command | status | what it is |
 |---|---|---|
 | `anomaly.fleet` | **the demo** | find every board on the LAN, score them all, roster at :8002 |
-| `sketch_aug3a/make_web_assets.py` | **required** | rebuild the board's web pages. after ANY dashboard edit, and on every fresh clone |
+| `pulse_display/make_web_assets.py` | **required** | rebuild the board's web pages. after ANY dashboard edit, and on every fresh clone |
 | `anomaly.serve` | current | single-stream dashboard at :8001 — WESAD replay, or one board over USB |
 | `anomaly.db` | current | inspect the store, take a backup |
 | `anomaly.device_wifi` | current | put a board on WiFi over USB, read back its IP. `--hotspot` = this Mac's Internet Sharing |
@@ -353,8 +353,8 @@ changes them. plain HTTP on the LAN — fine for a lab, not a product.
 the other two ways; anything stored on the board wins over the header, since
 NVS survives a reflash. (secrets.h is the last entry in the list, never stored.)
 
-hard-coded: copy `sketch_aug3a/secrets.example.h` to
-`sketch_aug3a/secrets.h` (gitignored) and fill in `WIFI_SSID` / `WIFI_PASS`.
+hard-coded: copy `pulse_display/secrets.example.h` to
+`pulse_display/secrets.h` (gitignored) and fill in `WIFI_SSID` / `WIFI_PASS`.
 the sketch does `#include "secrets.h"`, so it will **not compile until that copy
 exists** — it is the first thing to do on a fresh clone. leave both values empty
 (`""`) if you only ever set WiFi over USB. if the board already has credentials
@@ -368,13 +368,13 @@ python -m anomaly.device_wifi --forget
 the TFT header and on serial as `# wifi connected ssid=... ip=...`.
 
 **rebuild the web assets. this is not optional.** the dashboards are gzipped
-into a C header and compiled into the firmware. `sketch_aug3a/web_assets.h` is
+into a C header and compiled into the firmware. `pulse_display/web_assets.h` is
 gitignored, so a fresh clone does not have it and the sketch will not compile
 until you generate it — and after any edit under `pulse/` or `anomaly/static/`
 the board keeps serving the old copy until you re-run this and reflash:
 
 ```bash
-python3 sketch_aug3a/make_web_assets.py     # -> sketch_aug3a/web_assets.h
+python3 pulse_display/make_web_assets.py     # -> pulse_display/web_assets.h
 ```
 
 stdlib only (`gzip`, `os`, `sys`), so this one really does run on a bare
@@ -546,7 +546,8 @@ Python reference. serial prints `# on-device detector self-test pass …`, and
 | `dhold` | windows refused for movement |
 | `ddrop` | seconds the gate skipped in the last scored window. climbing 1/s = every new second rejected, window back-filled from older ones — why `dsc` can sit frozen |
 
-refit or change it — both files in `sketch_aug3a/` come from here:
+refit or change it — both files in `pulse_display/` come from here (and
+`board_model.h` is mirrored into `pulse_headless/` for you):
 
 ```bash
 python -m anomaly.board_export --check 300   # prove the C algorithm vs scipy/quality
@@ -721,7 +722,7 @@ only need the boards and the laptop on one network, use §2.2(a) instead and run
 plain `fleet`.
 
 **the sketch will not compile: `web_assets.h` not found**
-it is gitignored. run `python3 sketch_aug3a/make_web_assets.py`.
+it is gitignored. run `python3 pulse_display/make_web_assets.py`.
 
 **dashboard edits do not show on the board**
 same command, then reflash. the board serves a compiled-in copy.
@@ -839,7 +840,8 @@ python -m anomaly.master --host 10.49.10.173
 | `launcher/build_app.sh` | freezes `Pulse Control (standalone).app`, for a Mac with no Tk |
 | `launcher/build_exe.bat` | builds `Pulse Control.exe` (Windows) |
 | `pulse/Pulse Watch.dc.html` | the product UI, and the baked demo sources |
-| `sketch_aug3a/` | ESP32-S3 firmware + the web-asset baker |
+| `pulse_display/` | ESP32-S3 firmware **with a TFT** + the web-asset baker |
+| `pulse_headless/` | the same firmware for a board with **no screen** (Rev F: sensor on GPIO8/9) |
 | `data/pulse.db` | subjects, baselines, sessions, flags (gitignored) |
 | `WESAD/` | WESAD dataset (~17 GB, not in git) |
 | `pipeline/` | prior work — streaming pattern, `vitals.py`, sensor setup guide |

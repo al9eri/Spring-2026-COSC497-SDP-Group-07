@@ -40,7 +40,7 @@
 
 #include <ESPAsyncWebServer.h>
 
-// The dashboard, gzipped into PROGMEM by sketch_aug3a/make_web_assets.py.
+// The dashboard, gzipped into PROGMEM by pulse_display/make_web_assets.py.
 // Re-run that script whenever pulse/ or anomaly/static/ changes.
 #include "web_assets.h"
 

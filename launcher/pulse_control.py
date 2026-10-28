@@ -113,7 +113,7 @@ def find_repo() -> str | None:
     for start in (os.path.dirname(here), os.getcwd()):
         d = start
         for _ in range(8):
-            if os.path.isdir(os.path.join(d, "anomaly")) and os.path.isdir(os.path.join(d, "sketch_aug3a")):
+            if os.path.isdir(os.path.join(d, "anomaly")) and os.path.isdir(os.path.join(d, "pulse_display")):
                 return d
             parent = os.path.dirname(d)
             if parent == d:
@@ -181,9 +181,24 @@ def http_json(url: str, timeout: float = 1.5):
         return json.loads(r.read().decode())
 
 
-def http_text(url: str, timeout: float = 3.0) -> str:
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        return r.read().decode("ascii", "replace")
+def http_text(url: str, timeout: float = 3.0, tries: int = 3) -> str:
+    """GET a board endpoint, retrying a couple of times before giving up.
+
+    MEASURED on the Rev F board over a phone hotspot: 0% packet loss but a
+    round trip between 7 ms and 211 ms, so a single attempt lands in a stall
+    often enough to report a healthy board as dead ("no route to host"). These
+    endpoints are plain reads, so a retry costs nothing but the wait.
+    """
+    last = None
+    for n in range(tries):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                return r.read().decode("ascii", "replace")
+        except Exception as e:
+            last = e
+            if n + 1 < tries:
+                time.sleep(0.4 * (n + 1))
+    raise last
 
 
 # ---------------------------------------------------------------------- jobs
@@ -576,12 +591,12 @@ class App:
         row = self._section(f, "Firmware", "Run after editing anything under pulse/ or anomaly/static/, "
                                            "then re-upload the sketch. Needed once on every fresh clone.")
         self._btn(row, "Rebuild board web pages", lambda: self.run(
-            "assets", "Rebuild web assets", [os.path.join("sketch_aug3a", "make_web_assets.py")]),
+            "assets", "Rebuild web assets", [os.path.join("pulse_display", "make_web_assets.py")]),
             when=lambda: self.ready() and not self.is_running("assets"))
-        self._btn(row, "Open sketch folder", lambda: self.open_path("sketch_aug3a"))
+        self._btn(row, "Open sketch folder", lambda: self.open_path("pulse_display"))
 
         row = self._section(f, "On-device detector", "Prove the C port's algorithm, or refit it on WESAD "
-                                                     "(rewrites sketch_aug3a/board_model.h; re-upload after).")
+                                                     "(rewrites pulse_display/board_model.h; re-upload after).")
         self._btn(row, "Check C port", lambda: self.run(
             "export", "Check the on-device detector", ["-m", "anomaly.board_export", "--check", "300"]),
             when=lambda: self.ready() and not self.is_running("export"))
@@ -860,7 +875,7 @@ class App:
 
     def refit_board(self):
         if messagebox.askyesno(APP, "Refit the on-device detector on WESAD and rewrite "
-                                    "sketch_aug3a/board_model.h?\n\nYou will need to re-upload the sketch."):
+                                    "pulse_display/board_model.h?\n\nYou will need to re-upload the sketch."):
             self.run("export", "Refit + export on-device detector", ["-m", "anomaly.board_export"])
 
     def backup_db(self):

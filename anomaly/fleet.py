@@ -259,14 +259,28 @@ def local_subnets() -> list:
     return nets
 
 
-def probe(ip: str) -> dict | None:
-    """is there one of our boards at this address?"""
-    try:
-        with urllib.request.urlopen(f"http://{ip}/health", timeout=HTTP_TIMEOUT) as r:
-            if r.status != 200:
-                return None
-            body = r.read().decode("ascii", "ignore")
-    except Exception:
+def probe(ip: str, tries: int = 1) -> dict | None:
+    """is there one of our boards at this address?
+
+    tries stays 1 for the subnet sweep -- 254 addresses at one second each is
+    already the slowest thing the roster does, and an address with nothing on
+    it will never answer however often it is asked. Pass more only for an
+    address a board is KNOWN to be at, where a miss is a stalled link rather
+    than an empty slot: measured round trips to the Rev F board over a phone
+    hotspot swing between 7 ms and 211 ms.
+    """
+    body = None
+    for n in range(tries):
+        try:
+            with urllib.request.urlopen(f"http://{ip}/health", timeout=HTTP_TIMEOUT) as r:
+                if r.status != 200:
+                    return None
+                body = r.read().decode("ascii", "ignore")
+                break
+        except Exception:
+            if n + 1 < tries:
+                time.sleep(0.4 * (n + 1))
+    if body is None:
         return None
     if not body.startswith("ok "):
         return None
@@ -793,7 +807,8 @@ class Fleet:
             for net in self.subnets:
                 found.extend(await scan(net))
             for ip in self.extra:
-                info = await asyncio.get_running_loop().run_in_executor(NET, probe, ip)
+                # named by the user with --device, so it is worth asking twice
+                info = await asyncio.get_running_loop().run_in_executor(NET, probe, ip, 3)
                 if info:
                     found.append(info)
             for info in found:

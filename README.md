@@ -82,7 +82,7 @@ stream, runs the autoencoder, and pushes the verdict back to the board's
 `/flag`, which drives both the TFT and every browser watching.
 
 **the board runs its own detector.** the Mahalanobis baseline, the movement gate
-and the live scale are ported to C++ (`sketch_aug3a/board_detector.h`, fitted and
+and the live scale are ported to C++ (`pulse_display/board_detector.h`, fitted and
 exported by `anomaly/board_export.py`) and score the stream once a second on the
 board — the full sensor → detect → alert loop with no PC at all, and the raw
 waveform never leaves the device. when the PC is there its autoencoder wins; when
@@ -253,11 +253,15 @@ pipeline/                            real-time streaming + dashboard (carries ov
   pipeline.py / run_cli.py
   make_demo_data.py / demo_data.csv  92 s of curated PPG (ships with repo)
   SENSORS_SETUP.md                   Pi + sensor swap guide
-sketch_aug3a/                        ESP32-S3 firmware: streams IR/RED + vitals, TFT display
-  sketch_aug3a.ino                   sensing, conditioning, WiFi, web server, websocket, TFT verdict
-  make_web_assets.py                 gzip the dashboard into web_assets.h (re-run after ANY UI edit)
+pulse_display/                       ESP32-S3 firmware WITH a TFT: streams IR/RED + vitals
+  pulse_display.ino                  sensing, conditioning, WiFi, web server, websocket, TFT verdict
+  make_web_assets.py                 gzip the dashboard into web_assets.h, into BOTH sketch folders
+                                     (re-run after ANY UI edit)
   secrets.example.h                  copy to secrets.h (gitignored) and fill in the WiFi credentials
                                      — the sketch will not compile until that copy exists
+pulse_headless/                      the same firmware for a board with NO screen (Rev F wearable)
+  pulse_headless.ino                 identical but for the display: sensor on GPIO8/9, no TFT
+                                     — a separate sketch, so non-display fixes must land in both
 pulse/                               Pulse Watch product UI (Zayed) — served at / by anomaly/serve.py
   Pulse Watch.dc.html / support.js   design-tool export; speaks serve.py's /ws protocol
 WESAD/ · Code & Data/                datasets (not in git)

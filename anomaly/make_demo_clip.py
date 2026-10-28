@@ -160,7 +160,7 @@ def main(argv=None) -> int:
     page = page[:i] + START + "\nconst DEMO_CLIP = " + blob + ";\n" + page[j:]
     io.open(PAGE, "w", encoding="utf-8", newline="").write(page)
     print("  wrote %s" % os.path.relpath(PAGE, ROOT))
-    print("  now re-run: python3 sketch_aug3a/make_web_assets.py")
+    print("  now re-run: python3 pulse_display/make_web_assets.py")
     return 0
 
 

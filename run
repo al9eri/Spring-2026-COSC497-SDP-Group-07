@@ -5,7 +5,7 @@
 #     ./run setup                create ~/.venvs/sdp07 and install everything
 #     ./run anomaly.fleet        same as: python -m anomaly.fleet
 #     ./run anomaly.serve --source device
-#     ./run sketch_aug3a/make_web_assets.py
+#     ./run pulse_display/make_web_assets.py
 #
 # There is no venv to "get into". This finds the project's interpreter and runs
 # it directly, so it works from any shell, any tab, with or without conda, and
@@ -65,7 +65,7 @@ usage() {
     "    ./run anomaly.device_check           is the finger on properly?" \
     "    ./run anomaly.device_source --list-ports" \
     "    ./run anomaly.device_wifi --status" \
-    "    ./run sketch_aug3a/make_web_assets.py" \
+    "    ./run pulse_display/make_web_assets.py" \
     "" \
     "  the experiment" \
     "    ./run anomaly.protocol run           induced-stress session (master first)" \
