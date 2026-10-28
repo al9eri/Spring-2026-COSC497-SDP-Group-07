@@ -403,37 +403,37 @@ input{font-family:inherit}
     <!-- METHOD slide-over (stub) -->
     <sc-if value="{{ methodOpen }}" hint-placeholder-val="{{ false }}">
       <div onClick="{{ onCloseMethod }}" style="position:fixed;inset:0;background:rgba(16,24,40,.34);z-index:60"></div>
-      <div style="position:fixed;top:0;right:0;bottom:0;width:min(580px,96vw);background:#F6F8FB;z-index:61;box-shadow:-12px 0 40px rgba(16,24,40,.16);overflow:auto;padding:24px">
+      <div style="position:fixed;top:0;right:0;bottom:0;width:max(42vw,min(600px,96vw));background:#F6F8FB;z-index:61;box-shadow:-12px 0 40px rgba(16,24,40,.16);overflow:auto;padding:32px 36px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
           <div>
-            <div style="font-weight:800;font-size:20px;letter-spacing:-.01em">Method &amp; metrics</div>
-            <div style="font-size:13px;color:#6B7787;margin-top:3px;max-width:42ch">Detects deviations from a person's own calm baseline. The contribution is the method &amp; on-device deployment — not beating a smartwatch on raw accuracy.</div>
+            <div style="font-weight:800;font-size:26px;letter-spacing:-.01em">Method &amp; metrics</div>
+            <div style="font-size:15px;color:#6B7787;margin-top:4px;max-width:60ch;line-height:1.5">Detects deviations from a person's own calm baseline. The contribution is the method &amp; on-device deployment — not beating a smartwatch on raw accuracy.</div>
           </div>
           <button onClick="{{ onCloseMethod }}" style="width:34px;height:34px;border-radius:10px;background:#fff;border:1px solid #E6EBF2;color:#6B7787;font-size:15px;flex:none">✕</button>
         </div>
-        <div style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:5px 11px;border-radius:999px;background:#FFF7E8;border:1px solid #F6E6C0;font-size:11px;font-weight:700;letter-spacing:.03em;color:#B8862A"><span style="width:7px;height:7px;border-radius:999px;background:#F4B740"></span>PLACEHOLDER METRICS · WIRE TO RESULTS.md</div>
+        <div style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:5px 11px;border-radius:999px;background:#E9F9F0;border:1px solid #C9EEDA;font-size:12px;font-weight:700;letter-spacing:.03em;color:#1F8A5B"><span style="width:7px;height:7px;border-radius:999px;background:#2BAE73"></span>WESAD · 15 SUBJECTS · LEAVE-ONE-SUBJECT-OUT · FROM RESULTS.md</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px">
           <sc-for list="{{ methodStats }}" as="s" hint-placeholder-count="4">
-            <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:16px">
-              <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#9AA6B2">{{ s.label }}</div>
-              <div style="font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:6px;color:#1B2430">{{ s.value }}</div>
-              <div style="font-size:12px;color:#6B7787;margin-top:2px">{{ s.sub }}</div>
+            <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:20px 22px">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#9AA6B2">{{ s.label }}</div>
+              <div style="font-size:40px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:6px;color:#1B2430">{{ s.value }}</div>
+              <div style="font-size:13px;color:#6B7787;margin-top:4px;line-height:1.45">{{ s.sub }}</div>
             </div>
           </sc-for>
         </div>
         <div style="background:#fff;border:1px solid #E6EBF2;border-radius:16px;padding:18px;margin-top:14px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-            <div style="font-weight:700;font-size:14px">Transfer: zero-shot → calibrated</div>
+            <div style="font-weight:700;font-size:16px">Per-user calibration, per subject</div>
             <div style="display:flex;align-items:center;gap:14px">
               <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6B7787"><span style="width:11px;height:11px;border-radius:3px;background:#D7DEE8"></span>zero-shot</span>
               <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6B7787"><span style="width:11px;height:11px;border-radius:3px;background:#2DBE9E"></span>calibrated</span>
             </div>
           </div>
-          <canvas ref="{{ methodRef }}" style="width:100%;height:158px;display:block;margin-top:10px"></canvas>
-          <div style="font-size:12px;color:#6B7787;margin-top:6px">PR-AUC per subject (a.u.). Personalizing to each person's own calm lifts separation substantially — the core finding.</div>
+          <canvas ref="{{ methodRef }}" style="width:100%;height:360px;display:block;margin-top:12px"></canvas>
+          <div style="font-size:13px;color:#6B7787;margin-top:8px;line-height:1.55">PR-AUC for each WESAD subject: 1 is perfect separation of stress from calm, chance is about 0.35. Grey is the detector built on other people (zero-shot); green is the same detector after calibrating on the first half of that person's own calm, tested on the rest plus all their stress. The number above each pair is the change. Mean 0.750 → 0.867. Three people get worse (S10, S13, S15) when their calm slice is small or noisy. Statistical baseline (Mahalanobis), not the deployed autoencoder.</div>
         </div>
         <div style="background:#EEF4FF;border:1px solid #DBE6FB;border-radius:16px;padding:16px;margin-top:14px;font-size:13px;color:#3A4D6B;line-height:1.6">
-          <b style="color:#1B2430">Honest about limits.</b> Trained on calm data, so it flags the unfamiliar — it cannot name a cause. It is sensitivity-first and raises some false alarms by design. An early-warning aid, not a diagnostic device; every flag is reviewed by a person.
+          <b style="color:#1B2430">Honest about limits.</b> Trained on calm data, so it flags the unfamiliar — it cannot name a cause. It is sensitivity-first and raises some false alarms by design. An early-warning aid, not a diagnostic device; every flag is reviewed by a person. Every number here is from WESAD (a public wrist dataset); this device has not been through the stress protocol yet, so it has no numbers of its own.
         </div>
       </div>
     </sc-if>
@@ -569,12 +569,20 @@ class Component extends DCLogic {
 
   METHOD = {
     stats:[
-      {label:'PR-AUC',value:'0.78',sub:'stress vs. calm separation'},
-      {label:'Recall @ 90% specificity',value:'0.83',sub:'true events caught'},
-      {label:'Per-subject variance',value:'±0.14',sub:'PR-AUC spread across people'},
-      {label:'Transfer delta',value:'+0.21',sub:'zero-shot → calibrated PR-AUC'}
+      // anomaly/RESULTS.md: the deployed autoencoder (bottleneck 256, ch-cap 32),
+      // leave-one-subject-out, and the per-user calibration table
+      {label:'PR-AUC',value:'0.706',sub:'deployed model, on people it never saw · chance ≈ 0.35'},
+      {label:'Recall @ 90% specificity',value:'0.545',sub:'stress caught while 1 calm window in 10 is flagged'},
+      {label:'Per-person spread',value:'±0.206',sub:'std of that PR-AUC across the 15 people'},
+      {label:'Calibration gain',value:'+0.117',sub:'PR-AUC 0.750 → 0.867 on own calm · recall 0.46 → 0.69'}
     ],
-    subjects:[{s:'S2',zs:0.52,cal:0.79},{s:'S5',zs:0.61,cal:0.84},{s:'S8',zs:0.49,cal:0.77},{s:'S11',zs:0.58,cal:0.81},{s:'S13',zs:0.55,cal:0.83},{s:'S16',zs:0.63,cal:0.86}]
+    // `./run anomaly.calibrate`, PR-AUC per subject: zero-shot vs calibrated
+    subjects:[{s:'S2',zs:0.745,cal:0.918},{s:'S3',zs:0.342,cal:0.934},{s:'S4',zs:0.402,cal:0.974},
+              {s:'S5',zs:0.866,cal:0.949},{s:'S6',zs:0.815,cal:0.923},{s:'S7',zs:0.829,cal:0.986},
+              {s:'S8',zs:0.506,cal:0.735},{s:'S9',zs:0.632,cal:0.806},{s:'S10',zs:0.691,cal:0.566},
+              {s:'S11',zs:0.966,cal:1.000},{s:'S13',zs:0.786,cal:0.731},{s:'S14',zs:0.963,cal:1.000},
+              {s:'S15',zs:0.777,cal:0.494},{s:'S16',zs:0.987,cal:0.995},{s:'S17',zs:0.935,cal:0.993}],
+    means:{zs:0.750, cal:0.867}
   };
 
 
@@ -884,7 +892,12 @@ class Component extends DCLogic {
     let status;
     if(this.state.useLive && !this.state.connected) status='offline';
     else if(!this.state.running) status='paused';
-    else if(c.noContact) status='noContact';
+    else if(c.noContact){
+      // say what the finger check is doing: a new finger waits a few seconds
+      // to be believed, and that wait used to read as "no finger"
+      const fs=c.finger&&c.finger.st;
+      status = fs==='check'?'checking':fs==='unsteady'?'unsteady':fs==='nopulse'?'noPulse':'noContact';
+    }
     else if(mstate === 'stale' || mstate === 'none' || mstate === 'idle')
       status='noVerdict';
     else if(mstate === 'hold' || ql==='poor') status='poorSignal';
@@ -897,7 +910,7 @@ class Component extends DCLogic {
     else status='calm';
     // history sampling
     if(c.elapsed - this.lastHist > 0.5 || this.lastHist===0){ this.lastHist=c.elapsed; this.levelHist.push({t:c.elapsed, level:c.level, hr:c.bpm}); if(this.levelHist.length>800) this.levelHist.shift(); }
-    this.setState({ statusState:status, flag:flag, warmS:c.warmS||0, warming:warming, flagTimeStr:flagTimeStr, level:this.smooth, elapsed:c.elapsed, buf:c.buf, bpm:c.bpm, spo2:c.spo2, motion:c.motion, quality:c.q, qualityLabel:ql, label:c.label });
+    this.setState({ statusState:status, flag:flag, warmS:c.warmS||0, warming:warming, flagTimeStr:flagTimeStr, level:this.smooth, elapsed:c.elapsed, buf:c.buf, bpm:c.bpm, spo2:c.spo2, motion:c.motion, quality:c.q, qualityLabel:ql, label:c.label, finger:c.finger||null });
   }
 
   // ---------- calibration ----------
@@ -964,7 +977,7 @@ class Component extends DCLogic {
       // noise is amplitude-consistent. blank them rather than assert them.
       const nc = !!(m.device && m.device.contact===false);
       this.simClock=m.elapsed||this.simClock;
-      this.cur={ state:m.state||null, warmS:m.warm_s||0, level:m.level??0, bpm:(nc||m.bpm==null?null:m.bpm), spo2:(nc||m.spo2==null?null:m.spo2), motion:(m.motion!=null?m.motion:0), q:(nc?null:q), buf:m.buf??this.state.win, win:m.win??this.state.win, elapsed:m.elapsed||0, label:m.label||'—', flagProvided:true, flag:!!m.flag, noContact:nc };
+      this.cur={ state:m.state||null, warmS:m.warm_s||0, level:m.level??0, bpm:(nc||m.bpm==null?null:m.bpm), spo2:(nc||m.spo2==null?null:m.spo2), motion:(m.motion!=null?m.motion:0), q:(nc?null:q), buf:m.buf??this.state.win, win:m.win??this.state.win, elapsed:m.elapsed||0, label:m.label||'—', flagProvided:true, flag:!!m.flag, noContact:nc, finger:(m.device&&m.device.finger)||null };
       // the name can change while the page is open -- rename on the roster and
       // the board's own dashboard should follow, not wait for a reload
       if(m.subject && m.subject !== this.state.subjectName)
@@ -1019,7 +1032,7 @@ class Component extends DCLogic {
     const warming=st.running&&st.warming;
     const lvl=warming?0:Math.max(0,Math.min(1,st.level||0));
     const thr=Math.max(0.001,Math.min(1,st.thrLevel));
-    const ss=st.statusState; const muted=(ss==='warming'||ss==='paused'||ss==='offline'||ss==='poorSignal'||ss==='noContact'||ss==='noVerdict'||ss==='clearing');
+    const ss=st.statusState; const muted=(ss==='warming'||ss==='paused'||ss==='offline'||ss==='poorSignal'||ss==='noContact'||ss==='checking'||ss==='unsteady'||ss==='noPulse'||ss==='noVerdict'||ss==='clearing');
     const r2=lvl/thr; const col=muted?'#CBD4DF':(r2>=1?'#F2645A':(r2>=0.66?'#F4B740':'#2DBE9E'));
     ctx.lineCap='round';
     ctx.beginPath(); ctx.arc(cx,cy,r,A0,A1); ctx.strokeStyle='#EAEFF5'; ctx.lineWidth=13; ctx.stroke();
@@ -1214,15 +1227,32 @@ class Component extends DCLogic {
   }
   drawMethod(){
     const cv=this.methodRef.current; if(!cv) return; const {ctx,w,h}=this.prep(cv); ctx.clearRect(0,0,w,h);
-    const padL=4,padR=4,padT=10,padB=22, pw=w-padL-padR, plot=h-padT-padB;
+    const padL=52,padR=8,padT=50,padB=26, pw=w-padL-padR, plot=h-padT-padB;
     const Y=v=>padT+plot-Math.max(0,Math.min(1,v))*plot;
-    ctx.strokeStyle='#EFF3F8'; ctx.lineWidth=1; [0,0.5,1].forEach(g=>{ const y=Math.round(Y(g))+.5; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke(); });
-    const S=this.METHOD.subjects; const n=S.length; const slot=pw/n; const bw=Math.min(16,slot*0.30);
-    S.forEach((d,i)=>{ const cx=padL+slot*(i+0.5); const x1=cx-bw-2, x2=cx+2;
-      ctx.fillStyle='#D7DEE8'; const z=plot*d.zs; ctx.beginPath(); ctx.roundRect(x1,Y(d.zs),bw,z,[3,3,0,0]); ctx.fill();
-      ctx.fillStyle='#2DBE9E'; const c=plot*d.cal; ctx.beginPath(); ctx.roundRect(x2,Y(d.cal),bw,c,[3,3,0,0]); ctx.fill();
-      ctx.fillStyle='#9AA6B2'; ctx.font='10px Plus Jakarta Sans, sans-serif'; ctx.textAlign='center'; ctx.fillText(d.s,cx,h-7);
+    const F='Plus Jakarta Sans, sans-serif';
+    // y-axis: gridlines and labels every 0.25, and the axis name
+    ctx.lineWidth=1; ctx.font='11px '+F; ctx.textAlign='right'; ctx.textBaseline='middle';
+    [0,0.25,0.5,0.75,1].forEach(g=>{ const y=Math.round(Y(g))+.5;
+      ctx.strokeStyle=g===0?'#C9D2DE':'#EFF3F8'; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+      ctx.fillStyle='#6B7787'; ctx.fillText(g.toFixed(2),padL-8,y); });
+    ctx.save(); ctx.translate(12,padT+plot/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center';
+    ctx.fillStyle='#6B7787'; ctx.font='600 11px '+F; ctx.fillText('PR-AUC',0,0); ctx.restore();
+    const S=this.METHOD.subjects; const n=S.length; const slot=pw/n; const bw=Math.max(4,Math.min(18,slot*0.34));
+    S.forEach((d,i)=>{ const cx=padL+slot*(i+0.5); const x1=cx-bw-1.5, x2=cx+1.5;
+      ctx.fillStyle='#D7DEE8'; ctx.beginPath(); ctx.roundRect(x1,Y(d.zs),bw,plot*d.zs,[3,3,0,0]); ctx.fill();
+      ctx.fillStyle='#2DBE9E'; ctx.beginPath(); ctx.roundRect(x2,Y(d.cal),bw,plot*d.cal,[3,3,0,0]); ctx.fill();
+      const dv=d.cal-d.zs; ctx.textBaseline='alphabetic'; ctx.textAlign='center';
+      ctx.font='700 10px '+F; ctx.fillStyle=dv>=0?'#1F8A5B':'#D9483B';
+      ctx.fillText((dv>=0?'+':'−')+Math.abs(dv).toFixed(2),cx,Y(Math.max(d.zs,d.cal))-6);
+      ctx.font='11px '+F; ctx.fillStyle='#6B7787'; ctx.fillText(d.s,cx,h-8);
     });
+    // the two means: dashed lines across, named in the top margin
+    const M=this.METHOD.means; let lx=w-padR;
+    ctx.font='600 11px '+F; ctx.textAlign='right'; ctx.textBaseline='alphabetic';
+    [[M.cal,'#1F8A5B','calibrated mean '+M.cal.toFixed(3)],[M.zs,'#8A96A6','zero-shot mean '+M.zs.toFixed(3)]].forEach(([v,col,lab])=>{
+      const y=Math.round(Y(v))+.5; ctx.strokeStyle=col; ctx.setLineDash([5,4]); ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(lx-ctx.measureText(lab).width-26,11.5); ctx.lineTo(lx-ctx.measureText(lab).width-8,11.5); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle=col; ctx.fillText(lab,lx,16); lx-=ctx.measureText(lab).width+42; });
   }
 
   // ---------- hero presentation ----------
@@ -1234,6 +1264,9 @@ class Component extends DCLogic {
     // "Warming up — 0s left" from the moment the master started filling.
     const nLeft = st.warmS != null && st.warmS > 0
                 ? st.warmS : Math.max(0, Math.ceil((st.win - st.buf) / st.fs));
+    // the board's finger check: n of `of` seconds believed, and how long a
+    // just-lifted finger has to come back and continue the same window
+    const fg=st.finger||{}, keep=fg.keep||0, kept=keep?' · window kept for '+keep+'s':'';
     const map={
       offline:{word:'Disconnected',sub:'trying to reconnect…',color:'#94A3B8',soft:'#EEF1F5',glow:'rgba(148,163,184,.16)',iconPath:'M4 4l16 16 M12 3a9 9 0 0 0-9 9 M21 12a9 9 0 0 0-3.5-7.1',aura:'none'},
       paused:{word:'Paused',sub:'press Start to resume monitoring',color:'#6B7787',soft:'#F0F4F9',glow:'rgba(107,119,135,.13)',iconPath:'M9 5v14 M15 5v14',aura:'none'},
@@ -1250,7 +1283,16 @@ class Component extends DCLogic {
       calm:{word:'Calm',sub:'monitoring · '+this.fmtLong(st.elapsed),color:'#2BAE73',soft:'#E9F9F0',glow:'rgba(61,203,127,.15)',iconPath:'M20 6.5L9.5 17 4 11.5',aura:'none'},
       // there was no entry for this, so a bare sensor fell through to `calm`
       // and the panel showed a green tick beside a gauge reading NO FINGER
-      noContact:{word:'No finger on the sensor',sub:'nothing to measure',
+      checking:{word:"Checking it's a finger — "+(fg.n||0)+'/'+(fg.of||5)+'s',sub:'hold still'+kept,
+        color:'#5B8DEF',soft:'#ECF2FE',glow:'rgba(91,141,239,.17)',
+        iconPath:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M8 12l3 3 5-6',aura:'none'},
+      unsteady:{word:'Pulse not steady yet',sub:'hold still'+kept,
+        color:'#7C8898',soft:'#EEF1F5',glow:'rgba(148,163,184,.16)',
+        iconPath:'M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0',aura:'none'},
+      noPulse:{word:'No pulse — press lighter',sub:'something is on the sensor; rest the fingertip lightly'+kept,
+        color:'#7C8898',soft:'#EEF1F5',glow:'rgba(148,163,184,.16)',
+        iconPath:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M12 8v5 M12 16h.01',aura:'none'},
+      noContact:{word:'No finger on the sensor',sub:keep?'window kept for '+keep+'s — put the finger back to continue':'nothing to measure',
         color:'#7C8898',soft:'#EEF1F5',glow:'rgba(148,163,184,.16)',
         iconPath:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M8 8l8 8',aura:'none'}
     };
@@ -1285,7 +1327,7 @@ class Component extends DCLogic {
     // gauge color escalate
     const r = thr>0?(st.level/thr):0;
     let gColor = r>=1?'#F2645A':(r>=0.66?'#F4B740':'#2DBE9E');
-    if(st.statusState==='poorSignal'||st.statusState==='noContact'||st.statusState==='warming'||st.statusState==='paused'||st.statusState==='offline'||st.statusState==='noVerdict') gColor='#C3CCD8';
+    if(st.statusState==='poorSignal'||st.statusState==='noContact'||st.statusState==='checking'||st.statusState==='unsteady'||st.statusState==='noPulse'||st.statusState==='warming'||st.statusState==='paused'||st.statusState==='offline'||st.statusState==='noVerdict') gColor='#C3CCD8';
 
     const poor = st.qualityLabel==='poor';
     const ql=st.qualityLabel;
@@ -1350,8 +1392,8 @@ class Component extends DCLogic {
       gaugeWidth: ((warming&&running)?0:lvlPct)+'%', gaugeColor:gColor,
       thrLeft:(thr*100)+'%', thrPct:Math.round(thr*100)+'%',
       gaugeCenterBig: (running&&warming) ? (st.warmS ? st.warmS+'s'
-                        : Math.max(0,Math.ceil((st.win-st.buf)/st.fs))+'s') : (st.statusState==='noVerdict'?'—':(st.statusState==='paused'?'—':(st.statusState==='offline'?'—':(st.statusState==='noContact'?'—':lvlPct+'%')))),
-      gaugeCenterLabel: (running&&warming) ? 'warming up' : (st.statusState==='noVerdict'?'no verdict':(st.statusState==='paused'?'paused':(st.statusState==='offline'?'offline':(st.statusState==='noContact'?'no finger':(st.statusState==='poorSignal'?'signal weak':'deviation'))))),
+                        : Math.max(0,Math.ceil((st.win-st.buf)/st.fs))+'s') : (st.statusState==='noVerdict'?'—':(st.statusState==='paused'?'—':(st.statusState==='offline'?'—':((st.statusState==='noContact'||st.statusState==='unsteady'||st.statusState==='noPulse')?'—':(st.statusState==='checking'?((st.finger&&st.finger.n)||0)+'/'+((st.finger&&st.finger.of)||5):lvlPct+'%'))))),
+      gaugeCenterLabel: (running&&warming) ? 'warming up' : (st.statusState==='noVerdict'?'no verdict':(st.statusState==='paused'?'paused':(st.statusState==='offline'?'offline':(st.statusState==='noContact'?'no finger':(st.statusState==='checking'?'checking finger':(st.statusState==='noPulse'?'no pulse':(st.statusState==='unsteady'?'hold still':(st.statusState==='poorSignal'?'signal weak':'deviation')))))))),
       heroBreathe: this.reduceMotion?'none':'breathe 6.5s ease-in-out infinite',
       // vitals
       vit:{ bpm: st.bpm==null?'—':st.bpm, spo2: st.spo2==null?'—':st.spo2, motion: st.motion<0.12?'Still':'Active', motionHint: st.motion<0.12?'at rest':'moving' },

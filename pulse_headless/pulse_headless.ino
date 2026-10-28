@@ -276,6 +276,42 @@ bool fingerDetected() {
   return fingerPulse && irDcDisplay > FINGER_DC_MIN;
 }
 
+// What the finger check is doing, for the dashboards. A new finger waits
+// FINGER_HOLD seconds to be believed, and without this the wait was invisible:
+// the screen said "no finger" with a finger on it. n/of is the hold's
+// progress; keep is how many seconds a just-lost finger has to come back and
+// continue the same window (0 when there is none).
+//   on        contact
+//   check     a blood-like pulse, counting n of `of` seconds
+//   unsteady  a pulse, but not a blood-like one yet: moving, or not a finger
+//   nopulse   something on the window, no pulse: pressed too hard, or a surface
+//   none      nothing on the window
+const char *fingerState(int *n, int *of, long *keep) {
+  uint32_t now = millis();
+  bool recent = fingerLostMs != 0 && now - fingerLostMs < FINGER_KEEP_MS;
+  *keep = recent ? (long)((FINGER_KEEP_MS - (now - fingerLostMs) + 999) / 1000) : 0;
+  bool back = recent && fabsf((float)irDcDisplay - fingerLevel) < FINGER_DROP * fingerLevel;
+  *n = fingerAcHits;
+  *of = back ? 1 : FINGER_HOLD;
+  if (fingerDetected()) {
+    *keep = 0;
+    return "on";
+  }
+  if (irDcDisplay <= FINGER_DC_MIN) return "none";
+  if (fingerAcRms <= FINGER_AC_ON) return "nopulse";
+  if (fingerAcHits == 0 && fingerRatio >= FINGER_R_ON) return "unsteady";
+  return "check";
+}
+
+const char *fingerStateNow() {
+  int n, of;
+  long keep;
+  const char *st = fingerState(&n, &of, &keep);
+  static char buf[32];
+  snprintf(buf, sizeof(buf), "%s:%d/%d:%ld", st, n, of, keep);
+  return buf;
+}
+
 void fingerDrop() {
   fingerPulse = false;
   fingerAcHits = 0;
@@ -1388,6 +1424,7 @@ void webBegin() {
                   " ac=" + String(fingerAcRms, 1) +
                   " r=" + String(fingerRatio, 2) +
                   " finger=" + String(fingerDetected() ? 1 : 0) +
+                  " fst=" + String(fingerStateNow()) +
                   " bpm=" + String(bpmValid ? bpmLive : 0) +
                   // conditioning + websocket diagnostics: which link is dead?
                   " cond=" + String(condTotal) +
@@ -1537,6 +1574,9 @@ void wsTick() {
   bvp[nb] = 0;
 
   bool finger = fingerDetected();
+  int fN, fOf;
+  long fKeep;
+  const char *fSt = fingerState(&fN, &fOf, &fKeep);
   uint32_t buffered = condTotal < (COND_FS * 60) ? condTotal : (COND_FS * 60);
 
   // The verdict comes from the master when it is fresh, else from this board's
@@ -1569,7 +1609,8 @@ void wsTick() {
            "\"thr_level\":%.3f,\"state\":\"%s\",\"warm_s\":%ld,"
            "\"subject\":\"%s\",\"src\":\"%s\","
            "\"ond\":{\"st\":\"%s\",\"l\":%s,\"f\":%d,\"s\":%.4f,\"ms\":%lu},"
-           "\"device\":{\"connected\":true,\"port\":\"esp32\",\"contact\":%s,\"dropped\":%lu}}",
+           "\"device\":{\"connected\":true,\"port\":\"esp32\",\"contact\":%s,\"dropped\":%lu,"
+           "\"finger\":{\"st\":\"%s\",\"n\":%d,\"of\":%d,\"keep\":%ld}}}",
            condTotal / (float)COND_FS, (unsigned long)buffered, COND_FS * 60,
            idx, bvp, levelStr,
            (verdictFresh && v.flag == 1) ? "true" : "false",
@@ -1585,7 +1626,8 @@ void wsTick() {
            BD_ST_NAME[bdStateId], ondLevel, (int)bdFlag, (double)bdScore,
            (unsigned long)bdMs,
            finger ? "true" : "false",
-           (unsigned long)condDropped);
+           (unsigned long)condDropped,
+           fSt, fN, fOf, fKeep);
   ws.textAll(frame);
   wsFramesSent++;
   ws.cleanupClients();

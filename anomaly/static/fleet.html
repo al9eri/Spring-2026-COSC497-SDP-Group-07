@@ -222,8 +222,15 @@ function updateCard(d){
   else if(!d.subject){         verdict='—';       cls='none';
                                why='nobody assigned — the flag has no one to be about'; }
 
-  else if(!d.contact){         verdict='—';       cls='none';
-                               why='no finger on the sensor'; }
+  // without contact, say what the finger check is doing: a new finger waits a
+  // few seconds to be believed, and that wait used to read as "no finger"
+  else if(!d.contact){         const f = d.finger || {};
+                               verdict = f.st==='check' ? 'CHECKING' : '—'; cls='none';
+                               why = f.st==='check' ? "confirming it's a finger · hold still"
+                                   : f.st==='unsteady' ? 'pulse not steady yet — hold still'
+                                   : f.st==='nopulse' ? 'no pulse — rest the fingertip lightly, don\'t press'
+                                   : 'no finger on the sensor';
+                               if(d.keep_s) why += ' · window kept for '+d.keep_s+' s'; }
   else if(d.state==='warm'){   verdict='WARMING';  cls='none';
                                why='filling the 60 s window'; }
   else if(d.state==='hold'){   verdict='—';       cls='none';
@@ -254,7 +261,9 @@ function updateCard(d){
   setText(c.why, why);
   // a refused window is not a calm one: say which it is, rather than leaving a
   // stale level on screen as though it were current
-  setText(c.qual, d.quality_note ? '⚠ ' + d.quality_note
+  // with no contact the line above already says why; the note would repeat it
+  setText(c.qual, !d.contact ? ''
+                : d.quality_note ? '⚠ ' + d.quality_note
                 : d.quality != null ? 'signal quality ' + Math.round(d.quality * 100) + '%'
                 : '');
   c.qual.style.color = d.quality_note ? 'var(--warn)' : 'var(--dim)';
@@ -264,11 +273,13 @@ function updateCard(d){
   setText(c.ond, !o ? '' : 'on-device: ' + o.st
     + (o.l != null ? ' · ' + Math.round(o.l * 100) + '%' + (o.f ? ' FLAG' : '') : '')
     + (o.st === 'ok' || o.st === 'hold' ? ' · ' + o.ms + ' ms' : ''));
-  c.fill.style.width = pct + '%';
-  c.fill.style.background = d.flag ? 'var(--bad)' : 'var(--accent)';
+  // while the finger is being checked the bar shows the check, not a level
+  const fc = !d.contact && d.finger && d.finger.st === 'check' ? d.finger : null;
+  c.fill.style.width = fc ? Math.round(100 * Math.min(1, fc.n / Math.max(1, fc.of))) + '%' : pct + '%';
+  c.fill.style.background = fc ? 'var(--warn)' : d.flag ? 'var(--bad)' : 'var(--accent)';
   setText(c.bpm, d.bpm == null ? '—' : String(d.bpm));
   setText(c.spo2, d.spo2 == null ? '—' : String(d.spo2));
-  setText(c.contact, d.contact ? 'yes' : 'no');
+  setText(c.contact, d.contact ? 'yes' : fc ? fc.n + '/' + fc.of + ' s' : 'no');
 
   // the subject dropdown: options only when the roster changed, value only when
   // it disagrees and the user is not in the middle of using it

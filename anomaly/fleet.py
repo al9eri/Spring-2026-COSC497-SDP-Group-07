@@ -80,6 +80,23 @@ SESSION_IDLE_S = 120.0
 KEEP_S = 30.0
 PEND = 2 * FS
 
+
+def finger_note(f: dict | None, keep: int) -> str:
+    """what the board's finger check is doing, in words. a new finger waits a
+    few seconds to be believed; without this that wait read as "no finger"."""
+    st = (f or {}).get("st")
+    if st == "check":
+        note = "checking it's a finger · %d/%d s" % (f.get("n", 0), f.get("of", 5))
+    elif st == "unsteady":
+        note = "pulse not steady yet — hold still"
+    elif st == "nopulse":
+        note = "something on the sensor, no pulse — rest the fingertip lightly"
+    else:
+        note = "no finger on the sensor"
+    if keep:
+        note += " · window kept for %d s" % keep
+    return note
+
 # --- self-referencing scale -------------------------------------------------
 # A calibration used to store WHERE this person's calm sat. That number moves
 # the moment the sensor is re-placed: measured on 27 subjects recorded at two
@@ -417,6 +434,7 @@ class Device:
         self.below = 0                    # and under it, for the hysteresis
         self.flag_hist: deque = deque(maxlen=600)   # was it flagging? last 10 min
         self.ond = None                   # the board's own detector, from its frames
+        self.finger = None                # the board's finger check, from its frames
         self.protocol = None              # a ProtocolRun while one is running
         self.last_protocol = None         # how the last one ended, for the console
         self.freeze_norm = False          # a protocol pins the calm reference to its baseline
@@ -681,6 +699,12 @@ class Device:
         return {"flag_rate": round(rate, 3), "n": len(self.flag_hist),
                 "stale": bool(rate > 0.30)}
 
+    def keep_left(self) -> int:
+        """seconds a lost finger has to come back and continue this window."""
+        if self.contact or self.lost_since is None or not self.buf:
+            return 0
+        return max(0, int(np.ceil(KEEP_S - (time.monotonic() - self.lost_since))))
+
     def status(self) -> dict:
         stale = time.monotonic() - self.last_seen if self.last_seen else None
         sub = self.subject
@@ -718,6 +742,8 @@ class Device:
             "last_seen": None if stale is None else round(stale, 1),
             "calib": self.calib.status() if self.calib else None,
             "ond": self.ond,
+            "finger": self.finger,
+            "keep_s": self.keep_left(),
             "protocol": self.protocol.status() if self.protocol else None,
             "last_protocol": self.last_protocol,
         }
@@ -893,6 +919,7 @@ class Fleet:
                         dev.bpm = m.get("bpm")
                         dev.spo2 = m.get("spo2")
                         dev.ond = m.get("ond")        # None from older firmware
+                        dev.finger = d.get("finger")  # likewise
                         if m.get("sens") is not None:
                             dev.sens = float(m["sens"])   # the user moved the slider
                         now_c = time.monotonic()
@@ -954,7 +981,7 @@ class Fleet:
                             # there and says so on its own screen; we just keep
                             # the channel warm so the name and state stay fresh
                             state = "idle"
-                            dev.quality_note = "no finger on the sensor"
+                            dev.quality_note = finger_note(dev.finger, dev.keep_left())
                         elif not dev.scoring:
                             state = "none"
                             dev.quality_note = "no subject assigned"
