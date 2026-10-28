@@ -19,8 +19,9 @@ is not what the model or the charts want, so this does four things on the way:
      pedestal and baseline wander, leaving an AC pulse waveform in the same
      shape family as WESAD BVP. the filter is primed at the current DC level so
      it starts settled instead of ringing for ten seconds.
-  4. **contact detection** — IR DC below `contact_threshold` means the finger is
-     off the sensor. samples still flow (the timebase must stay continuous); the
+  4. **contact detection** — the finger is on only when IR DC is above
+     `contact_threshold` AND the band-passed signal carries a pulse (an empty
+     sensor can sit above the threshold on reflection). samples still flow (the timebase must stay continuous); the
      flag is reported so the UI can withhold judgement.
 
 the reader runs on a background thread and reconnects on its own, so unplugging
@@ -48,6 +49,11 @@ DEFAULT_BAUD = 115200
 # no change here. Verified at 10 / 25 / 100 Hz device rates.
 DEVICE_FS_NOMINAL = 100
 CONTACT_IR = 50_000         # same skin-contact threshold the sketch displays
+# the level alone is not contact: an empty Rev F sensor reads ~60k. a finger also
+# has to show a pulse -- one-second RMS of the band-passed signal, ~14 empty vs
+# 550-740 on a fingertip. on above CONTACT_AC_ON for 2 s running, off below
+# CONTACT_AC_OFF. mirrors fingerFeed() in the sketch.
+CONTACT_AC_ON, CONTACT_AC_OFF = 60.0, 30.0
 GAP_MS = 500.0              # timestamp jump this large = discontinuity, re-prime
 BUFFER_SEC = 10             # bound the hand-off queue; drop oldest past this
 
@@ -125,6 +131,9 @@ class DeviceSource:
         self.connected = False
         self.port = None
         self.contact = False
+        self.pulse = False
+        self.ac_rms = 0.0
+        self._ac_sum, self._ac_n, self._ac_hits = 0.0, 0, 0
         self.ir_dc = 0.0
         self.red_dc = 0.0
         self.device_bpm = None
@@ -300,6 +309,22 @@ class DeviceSource:
         """
         self._zi = self._sos_zi * dc
 
+    def _judge_pulse(self, y):
+        """once a second of conditioned signal: is there a pulse in it at all?"""
+        for v in y:
+            self._ac_sum += v * v
+            self._ac_n += 1
+            if self._ac_n < self.fs:
+                continue
+            self.ac_rms = (self._ac_sum / self._ac_n) ** 0.5
+            self._ac_sum, self._ac_n = 0.0, 0
+            if self.pulse:
+                self.pulse = self.ac_rms >= CONTACT_AC_OFF
+            else:
+                self._ac_hits = self._ac_hits + 1 if self.ac_rms > CONTACT_AC_ON else 0
+                if self._ac_hits >= 2:
+                    self.pulse, self._ac_hits = True, 0
+
     def _on_sample(self, t_ms: float, ir: float, red: float):
         self.raw_count += 1
         self.last_sample_at = time.monotonic()
@@ -309,7 +334,7 @@ class DeviceSource:
         a = 0.04          # DC time constant ~25 samples (0.25 s at 100 Hz)
         self.ir_dc = ir if self.raw_count == 1 else (1 - a) * self.ir_dc + a * ir
         self.red_dc = red if self.raw_count == 1 else (1 - a) * self.red_dc + a * red
-        self.contact = self.ir_dc > self.contact_threshold
+        self.contact = self.pulse and self.ir_dc > self.contact_threshold
 
         # first sample, or the stream jumped (reconnect / millis() rollover)
         if (self._t_prev is None or t_ms < self._t_prev
@@ -338,6 +363,7 @@ class DeviceSource:
         if self._zi is None:
             self._prime_filter(vals[0])
         y, self._zi = sosfilt(self._sos, np.asarray(vals, dtype=np.float64), zi=self._zi)
+        self._judge_pulse(y)
         if self.invert:
             y = -y
 

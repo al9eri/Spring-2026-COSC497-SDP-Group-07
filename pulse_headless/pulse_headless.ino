@@ -2,7 +2,7 @@
 //
 // The no-screen variant of pulse_display/pulse_display.ino, for a board with
 // no TFT fitted: the Rev F wearable, which wires the MAX30102 to GPIO8/GPIO9
-// and brings the only display-capable interface out to a 24-pin FPC that is
+// and brings the only display-capable interface out c:\Users\ADMIN\Documents\GitHub\Spring-2026-COSC497-SDP-Group-07\sketch_aug3a\secrets.hto a 24-pin FPC that is
 // not populated. Everything the display build does EXCEPT paint a screen --
 // sensor loop, serial stream, WiFi, hosted dashboard, on-device detector --
 // is identical here, line for line.
@@ -221,6 +221,28 @@ char hostSubject[28] = "";
 volatile bool wearerDirty = true;
 int32_t hostWait = 0;                 // seconds of warm-up left
 uint32_t irDcDisplay = 0;             // slow IR average, for the no-finger check
+// Is a finger on the sensor? The IR level alone cannot say. The Rev F board's
+// empty sensor reads ~60,700 (LED light reflected back inside the window), above
+// the 50,000 the old rig used, so the board claimed a finger with nothing on it,
+// warmed up, and printed a heart rate read off noise. What an empty sensor cannot
+// fake is a pulse: the conditioned signal's one-second RMS was ~14 counts empty
+// and 550-740 with a fingertip on (measured 2026-10-28). So both must hold -- the
+// level, and a pulse. The pulse is judged once a second in fingerFeed(); the gap
+// between the on and off lines keeps a weak beat from flickering it, and two
+// loud seconds in a row are needed to turn it on, so a knock on an empty board
+// does not.
+#define FINGER_DC_MIN   50000          // IR level below this: nothing on the window
+#define FINGER_AC_ON    60.0f          // one-second RMS to call a pulse present...
+#define FINGER_AC_OFF   30.0f          // ...and to call it gone again
+volatile bool fingerPulse = false;
+volatile float fingerAcRms = 0.0f;     // the last full second, for /health
+float fingerAcSum = 0.0f;
+uint16_t fingerAcN = 0;
+uint8_t fingerAcHits = 0;              // loud seconds in a row, while off
+
+bool fingerDetected() {
+  return fingerPulse && irDcDisplay > FINGER_DC_MIN;
+}
 // Big enough for "W,<ssid>,<password>": an SSID is up to 32 chars and a WPA2
 // passphrase up to 63, so the old 16-byte buffer could never carry credentials.
 char rxLine[160];
@@ -572,7 +594,7 @@ volatile int32_t bdDropped = 0;
 void bdFeed(float y) {
   if (!bdReady) return;
   uint32_t now = millis();
-  if (irDcDisplay > 50000) {
+  if (fingerDetected()) {
     bdRing[bdTotal % BD_RING] = y;
     __sync_synchronize();                    // the sample before the count
     bdTotal = bdTotal + 1;
@@ -592,7 +614,7 @@ void bdTick() {
     bdFlag = 0;
     bdDropped = 0;
   }
-  if (irDcDisplay <= 50000) {
+  if (!fingerDetected()) {
     bdStateId = BD_ST_IDLE;
     bdTickMs = t0;
     return;
@@ -812,6 +834,25 @@ void condReset() {
   hrReset();                          // the signal is discontinuous now
 }
 
+// Called for every conditioned sample; settles fingerPulse once a second.
+void fingerFeed(float y) {
+  fingerAcSum += y * y;
+  if (++fingerAcN < COND_FS) return;
+  float rms = sqrtf(fingerAcSum / (float)fingerAcN);
+  fingerAcSum = 0.0f;
+  fingerAcN = 0;
+  fingerAcRms = rms;
+  if (fingerPulse) {
+    if (rms < FINGER_AC_OFF) fingerPulse = false;
+  } else {
+    fingerAcHits = (rms > FINGER_AC_ON) ? fingerAcHits + 1 : 0;
+    if (fingerAcHits >= 2) {
+      fingerPulse = true;
+      fingerAcHits = 0;
+    }
+  }
+}
+
 // One raw sample in; zero or more conditioned 64 Hz samples out.
 void condFeed(uint32_t tMs, uint32_t ir) {
   float t = (float)tMs;
@@ -841,6 +882,7 @@ void condFeed(uint32_t tMs, uint32_t ir) {
     }
     float y = condFilter(interp);
     condPush(y);
+    fingerFeed(y);                    // is there a pulse in it at all?
     hrPush(y);                        // the HR algorithm runs on the same signal
     bdFeed(y);                        // and so does the on-device detector
     condTGrid += step;
@@ -1203,6 +1245,8 @@ void webBegin() {
                   " rssi=" + String(WiFi.RSSI()) +
                   " heap=" + String(ESP.getFreeHeap()) +
                   " ir=" + String(irDcDisplay) +
+                  " ac=" + String(fingerAcRms, 1) +
+                  " finger=" + String(fingerDetected() ? 1 : 0) +
                   " bpm=" + String(bpmValid ? bpmLive : 0) +
                   // conditioning + websocket diagnostics: which link is dead?
                   " cond=" + String(condTotal) +
@@ -1350,7 +1394,7 @@ void wsTick() {
   idx[ni] = 0;
   bvp[nb] = 0;
 
-  bool finger = (irDcDisplay > 50000);
+  bool finger = fingerDetected();
   uint32_t buffered = condTotal < (COND_FS * 60) ? condTotal : (COND_FS * 60);
 
   // The verdict comes from the master when it is fresh, else from this board's
